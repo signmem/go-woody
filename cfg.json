@@ -1,0 +1,21 @@
+{
+    "debug":true,
+    "log_file": "./app.log",
+    "log_maxage": 432000,
+    "log_rotateage": 86400,
+    "dns_server": ["10.189.20.49", "10.199.212.241"],
+    "zone_file": "/etc/pdns-recursor/recursor.d/zone",
+    "http": {
+        "address" : "0.0.0.0",
+        "port":  "8080"
+    },
+    "mysql": {
+        "max_connection": 100,
+        "max_idel": 10,
+        "db_user": "pdns",
+        "db_pass": "db-password",
+        "db_host": "db-host",
+        "db_port": "3306",
+        "db_name": "pdns"
+    }
+}
