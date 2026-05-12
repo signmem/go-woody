@@ -6,14 +6,16 @@ import (
         "github.com/signmem/go-woody/g"
 )
 
-func init() {
-        healthCheck()
-        apiControll()
-}
-
 type Dto struct {
         Msg     string          `json:"msg"`
         Data    interface{}     `json:"data"`
+}
+
+
+type Response struct {
+	Code    int         `json:"code"`    // 业务码：0=成功，非0=失败
+	Message string      `json:"message"` // 提示信息
+	Data    interface{} `json:"data"`    // 数据体
 }
 
 
@@ -21,6 +23,9 @@ type NotFoundResponse struct {
         Code    int             `json:"code"`
         Message interface{}     `json:"message"`
         Status  string  `json:"status"`
+}
+
+func init() {
 }
 
 func RenderJson(w http.ResponseWriter, v interface{}) {
@@ -53,6 +58,14 @@ func RenderErrorJson(w http.ResponseWriter, msg interface{}) {
         w.Write(bs)
 }
 
+func RenderFailJson(w http.ResponseWriter, code int, msg string) {
+	RenderJson(w, Response{
+		Code:    code,
+		Message: msg,
+		Data:    nil,
+	})
+}
+
 
 func RenderDataJson(w http.ResponseWriter, data interface{}) {
         RenderJson(w, Dto{Msg: "success", Data: data})
@@ -71,18 +84,29 @@ func AutoRender(w http.ResponseWriter, data interface{}, err error) {
         RenderDataJson(w, data)
 }
 
-func Start() {
+func Start() error {
 
         address := g.Config().Http.Address
         port := g.Config().Http.Port
-        listen := address + ":" + port
+        listenAddr := address + ":" + port
+
+	// apiControll()
+	// healthCheck()
+	mux := http.NewServeMux()
+	registerRoutes(mux)
 
         s := &http.Server{
-                Addr:           listen,
+                Addr:           listenAddr,
+		Handler:        mux,
                 MaxHeaderBytes: 1 << 30,
         }
-
-        g.Logger.Infof("listening %s", listen)
-        g.Logger.Fatalln(s.ListenAndServe())
+	g.Logger.Infof("api server listening on: %s", listenAddr)
+	return s.ListenAndServe()
 }
 
+
+func registerRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/_health_check", healthCheckHandler)
+	mux.HandleFunc("/api/hosts", handleHosts)
+	mux.HandleFunc("/api/hosts/", handleHosts)
+}
