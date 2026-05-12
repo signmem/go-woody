@@ -14,6 +14,10 @@ import (
 
 func dnsModify(r *http.Request) (record DNSHost, err error) {
 
+	defer func() {
+		_ = r.Body.Close()
+	}()
+
 	path := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
 	pathParts := strings.Split(path, "/")
 
@@ -47,7 +51,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("Error: body read error")
+		msg := fmt.Errorf("dnsModify() Error: body read error: %v", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -56,7 +60,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: body json unmarshar error")
+		msg := fmt.Errorf("dnsModify() Error: body json unmarsharl error")
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -88,7 +92,11 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	dnsModify.Name      = hostDict.Hostname
 	dnsModify.Content   = hostDict.IP
 
-	count, _ := db.GetHostRecordsCount(dnsModify)
+	count, err :=  db.GetHostRecordsCount(dnsModify)
+	if err != nil {
+		g.Logger.Errorf("dnsModify() get host record count error: %v", err)
+		return record, err
+	}
 
 	if count != 1 {
 		msg := fmt.Errorf("Error: id: %d, hostname: %s, " +
@@ -97,7 +105,12 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		return record, msg
 	}
 
-	hostID, _ := db.GetHostRecordsID(dnsModify)
+	hostID, err := db.GetHostRecordsID(dnsModify)
+
+	if err != nil {
+		g.Logger.Errorf("dnsModify() get host record id error: %v", err)
+		return record, err
+	}
 
 	dnsModify.ID = hostID
 	dnsModify.TTL = 30
@@ -105,7 +118,6 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 
 	_, err = db.UpdateRecord(tx, dnsModify)
 	if err != nil {
-		tx.Rollback()
 		msg := fmt.Errorf("Error: update record error: %s", err)
 		g.Logger.Error(msg)
 		return record, msg
@@ -113,7 +125,6 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 
 	err = db.UpdateSOA(tx, dnsModify.Name)
 	if err != nil {
-		tx.Rollback()
 		msg := fmt.Errorf("Error: update SOA error: %s", err)
 		g.Logger.Error(msg)
 		return record, msg

@@ -13,11 +13,14 @@ import (
 
 func dnsGet(r *http.Request) (v interface{}, err error) {
 
+	defer func() { 
+		_ = r.Body.Close() 
+	}()
+
 	cleanPath := path.Clean(r.URL.Path)
-
 	pathSegments := strings.Split(cleanPath, "/")
-
 	segments := make([]string, 0)
+
 	for _, seg := range pathSegments {
 		if seg != "" {
 			segments = append(segments, seg)
@@ -34,7 +37,7 @@ func dnsGet(r *http.Request) (v interface{}, err error) {
 			return nil, msg
 		}
 
-		return dnsGetSignleHost(idInt)
+		return dnsGetSingleHost(idInt)
 	}
 
 	if len(segments) == 2 && segments[0] == "api" && segments[1] == "hosts" {
@@ -49,7 +52,7 @@ func dnsGet(r *http.Request) (v interface{}, err error) {
 		return dnsGetMultiHost( page, perPage)
 	}
 
-	msg := fmt.Errorf("Error: params error.")
+	msg := fmt.Errorf("dnsGet() Error: params error.")
 	g.Logger.Error(msg)
 
 	return nil, msg
@@ -85,7 +88,7 @@ func validatePaginationParams(params url.Values) (int, int, error) {
 
 	for key := range params {
 		if key != "page" && key != "per_page" {
-			return 0, 0, fmt.Errorf("not supoort %s", key)
+			return 0, 0, fmt.Errorf("not support %s", key)
 		}
 	}
 
@@ -106,14 +109,16 @@ func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err err
 		return dnsDBRecord, fmt.Errorf("Error: failed to get records: %w", err)
 	}
 
-	if len(records) == 0 {
-		return dnsDBRecord, fmt.Errorf("Error: not records found.")
-	}
+	// 修复：无数据不报错，返回空列表即可
+	// if len(records) == 0 {
+	// 	return dnsDBRecord, fmt.Errorf("Error: not records found.")
+	// }
 
 	count, err := db.GetRecordsCount()
 
 	if err != nil {
 		g.Logger.Errorf("dnsGet() GetRecordsCount() error: %s", err)
+		count = 0
 	}
 
 
@@ -134,7 +139,7 @@ func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err err
 
 }
 
-func dnsGetSignleHost(domain_id int) (dnshost DNSHost, err error) {
+func dnsGetSingleHost(domain_id int) (dnshost DNSHost, err error) {
 
 	dnsARecord, err := db.GetARecordsByDomainID(domain_id)
 

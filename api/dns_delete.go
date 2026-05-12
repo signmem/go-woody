@@ -13,6 +13,10 @@ import (
 func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 
 
+	defer func() {
+		_ = r.Body.Close()
+	}()
+
 	path := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
 	pathParts := strings.Split(path, "/")
 
@@ -61,7 +65,6 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 	_, err = db.DeleteRecordByDomainID(tx, int64(domain_id))
 
 	if err != nil {
-		tx.Rollback()
 
 		msg := fmt.Errorf("Error: Host %d delete from DB.", pathParts[0])
 		g.Logger.Error(msg)

@@ -30,6 +30,10 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	defer func() {
+		_ = r.Body.Close()
+	}()
+
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
@@ -44,9 +48,9 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsAdd() Error: body json unmarshar error")
+		msg := fmt.Errorf("dnsAdd() Error: body json unmarsharl error")
 		g.Logger.Error(msg)
-		htmlMsg.Msg = "Post data not valid, body json unmarshar format error!"
+		htmlMsg.Msg = "Post data not valid, body json unmarsharl format error!"
 		return htmlMsg, msg
 	}
 
@@ -69,14 +73,18 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		hostName := host.Hostname
 		ipaddr := host.IP
 
+		// 基础空值校验
+		if hostName == "" || ipaddr == "" {
+			g.Logger.Errorf("dnsAdd() Error: hostname or ip is empty")
+			falseAdd += 1
+			continue
+		}
+
 		if isIPv4(ipaddr) == false {
 			g.Logger.Errorf("dnsAdd() Error: %s not valid ipaddress", ipaddr)
 			falseAdd += 1
 			continue
 		}
-
-		// 验证主机名是否合法
-		// _, domainDict, fullDomain,  err := db.HostCheck(hostName)
 
 		if db.IsValidHostname(hostName) == false {
 			g.Logger.Errorf("dnsAdd() Error: %s not valid hostname",  hostName)
@@ -120,10 +128,8 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	}
 
 	var addStatus DnsAddStatus
-
 	addStatus.Success = successAdd
 	addStatus.Failure = falseAdd
-
 
 	htmlMsg.Msg = addStatus.String()
 
@@ -132,7 +138,6 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 
 func addSingleHost(host HostParams) (err error) {
-
 
 	hostName := host.Hostname
 	ipaddr   := host.IP
@@ -148,9 +153,11 @@ func addSingleHost(host HostParams) (err error) {
 	}
 
 	defer func() {
-		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			msg := fmt.Sprintf("addSingleHost() Error: transaction rollback error")
-			g.Logger.Errorf(msg)
+		if err != nil {
+			// 只有失败才回滚
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
+				g.Logger.Errorf("addSingleHost() rollback error: %v", rollbackErr)
+			}
 		}
 	}()
 
@@ -158,7 +165,6 @@ func addSingleHost(host HostParams) (err error) {
 	domain_id, err := dnsDomainAdd(tx, hostName)
 
 	if err != nil {
-		tx.Rollback()
 		msg := fmt.Sprintf("dnsAdd() Error: domain %s add error: %s", hostName, err)
 		return errors.New(msg)
 
@@ -167,7 +173,6 @@ func addSingleHost(host HostParams) (err error) {
 	_, err = dnsHostAdd(tx, domain_id, hostName, ipaddr)
 
 	if err != nil {
-		tx.Rollback()
 		msg := fmt.Sprintf("dns %s add error: %s", hostName, err)
 		return errors.New(msg)
 	}
@@ -175,7 +180,6 @@ func addSingleHost(host HostParams) (err error) {
 	err = db.UpdateSOA(tx, hostName)
 
 	if err != nil {
-		tx.Rollback()
 		msg := fmt.Sprintf("dns %s update SOA error: %s", hostName, err)
 		return errors.New(msg)
 	}
