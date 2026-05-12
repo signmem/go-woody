@@ -243,7 +243,11 @@ func IsValidHostname(hostname string) bool {
 			return false
 		}
 
-		matched, _ := regexp.MatchString(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`, part)
+		//  not support domain with "_"
+		// matched, _ := regexp.MatchString(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`, part)
+
+		// supoort domain with "_"
+		matched, _ := regexp.MatchString(`^[a-zA-Z0-9]([a-zA-Z0-9_-]{0,61}[a-zA-Z0-9])?$`, part)
 		if !matched {
 			return false
 		}

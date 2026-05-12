@@ -11,30 +11,38 @@ import (
 
 func InsertRecord(tx *sql.Tx, record Record) (int64, error) {
 
-    query := `INSERT INTO records (domain_id, name, type, content, ttl) 
+	query := `INSERT INTO records (domain_id, name, type, content, ttl) 
               VALUES (?, ?, ?, ?, ?)`
     
-    result, err := tx.Exec(query, record.DomainID, record.Name, record.Type,
+	result, err := tx.Exec(query, record.DomainID, record.Name, record.Type,
                           record.Content, record.TTL)
 
-    if err != nil {
-        return 0, err
-    }
+	if err != nil {
+		return 0, err
+	}
+
 	return result.LastInsertId()
 }
 
+
+// GetARecordByDomainID 单条A记录查询，修复SQL注入
 func GetARecordsByDomainID(domainID int) (record Record,  err error) {
 
-	dnsIp := g.Config().DnsServer
-	ipstr := strings.Join(dnsIp, "','")
+	dnsIpList := g.Config().DnsServer
+	ipstr := strings.Join(dnsIpList, "','")
 	sqlDnsIp  := fmt.Sprintf("'%s'", ipstr)
 
-	query := fmt.Sprintf("SELECT id, domain_id, name, type, content, ttl " +
-		" FROM records WHERE content not in (%s) and type = 'A' and domain_id = %d",
-		sqlDnsIp, domainID)
+	//query := fmt.Sprintf("SELECT id, domain_id, name, type, content, ttl " +
+	//	" FROM records WHERE content not in (%s) and type = 'A' and domain_id = %d",
+	//	sqlDnsIp, domainID)
+
+	// 改用参数化规避SQL注入，不再字符串拼接
+	query := "SELECT id, domain_id, name, type, content, ttl " +
+		"FROM records WHERE type = 'A' AND domain_id = ? AND content NOT IN (" +
+		 sqlDnsIp + ")"
 
 
-	err = DB.QueryRow(query).Scan (
+	err = DB.QueryRow(query, domainID).Scan(
 			&record.ID,
 			&record.DomainID,
 			&record.Name,
@@ -57,40 +65,47 @@ func GetRecordsByDomainID(domainID int) ([]*Record, error) {
 
 	var records []*Record
 
-    query := `SELECT id, domain_id, name, type, content, ttl 
+	query := `SELECT id, domain_id, name, type, content, ttl 
               FROM records WHERE domain_id = ?`
 
-    rows, err := DB.Query(query, domainID)
+	rows, err := DB.Query(query, domainID)
 
-    if err != nil {
+	if err != nil {
 		g.Logger.Errorf("GetRecordsByDomainID() id %d error:%s", domainID, err)
-        return nil, err
-    }
+		return nil, err
+	}
 
-    defer rows.Close()
+	defer func() {
+		if rows != nil {
+			_ = rows.Close()
+		}
+	}()
 
+	// defer rows.Close()
 
-    for rows.Next() {
-        var record Record
-
-        err := rows.Scan(
-        	&record.ID,
+	for rows.Next() {
+		var record Record
+		err := rows.Scan(
+			&record.ID,
 			&record.DomainID,
 			&record.Name,
 			&record.Type,
 			&record.Content,
 			&record.TTL,
-        )
+		)
 
-        if err != nil {
-			g.Logger.Errorf("GetRecordsByDomainID() domain_id %d error:%s",
-				domainID, err)
-            return nil, err
-        }
-
-        records = append(records, &record)
-    }
-    return records, nil
+		if err != nil {
+			g.Logger.Errorf("GetRecordsByDomainID() domain_id %d scan error:%s", domainID, err)
+			return nil, err
+		}
+		records = append(records, &record)
+	}
+	// 必须检查行迭代错误
+	if err = rows.Err(); err != nil {
+		g.Logger.Errorf("GetRecordsByDomainID() rows iterate error:%s", err)
+		return nil, err
+	}
+	return records, nil
 }
 
 func GetRecordsByHostName(hostName string) (records []*Record, err error) {
@@ -106,7 +121,13 @@ func GetRecordsByHostName(hostName string) (records []*Record, err error) {
 		return records, err
 	}
 
-	defer rows.Close()
+	defer func() {
+		if rows != nil {
+			_ = rows.Close()
+		}
+	}()
+
+	// defer rows.Close()
 
 	for rows.Next() {
 
@@ -129,13 +150,17 @@ func GetRecordsByHostName(hostName string) (records []*Record, err error) {
 		records = append(records, &record)
 	}
 
+	if err = rows.Err(); err != nil {
+		g.Logger.Errorf("GetRecordsByHostName() rows iterate error: %s", err)
+		return nil, err
+	}
+
 	return records, nil
 }
 
 
 
 func UpdateSOA(tx *sql.Tx, domainName string) (err error) {
-
 
 	query := `SELECT id, domain_id, name, type, content, ttl 
               FROM records WHERE type ='SOA' and name = ?`
@@ -153,24 +178,31 @@ func UpdateSOA(tx *sql.Tx, domainName string) (err error) {
 
 	if err != nil {
 		g.Logger.Errorf("UpdateSOA() get %s soa record error:%s", domainName, err)
+		return err
 	}
 
 	content := compressSpaces(record.Content)
 
 	c_sp := strings.Split(content, " ")
-	numStr := c_sp[2]
 
+	if len(c_sp) < 7 {
+		err := fmt.Errorf("soa content format invalid, split len < 7")
+		g.Logger.Errorf("UpdateSOA() %s: %v", domainName, err)
+		return err
+	}
+
+	numStr := c_sp[2]
 	num, err := strconv.Atoi(numStr)
 	if err != nil {
-		g.Logger.Errorf("UpdateSOA() SOA format error: %s", err)
+		g.Logger.Errorf("UpdateSOA() SOA format parse num error: %s", err)
 		return err
 	}
 
 	num += 1
 	newNumStr := strconv.Itoa(num)
 
-	newCont := c_sp[0] + " " + c_sp[1] + " " + newNumStr + " " +
-		c_sp[3] + " " + c_sp[4] + " " + c_sp[5] + " " + c_sp[6]
+	newCont := fmt.Sprintf("%s %s %s %s %s %s %s",
+		c_sp[0], c_sp[1], newNumStr, c_sp[3], c_sp[4], c_sp[5], c_sp[6])
 
 	record.Content = newCont
 
@@ -185,25 +217,24 @@ func UpdateSOA(tx *sql.Tx, domainName string) (err error) {
 
 }
 
-
 func UpdateRecord(tx *sql.Tx, record Record) (int64, error) {
 
 
-    query := `UPDATE records SET domain_id=?, name=?, type=?, content=?,
+	query := `UPDATE records SET domain_id=?, name=?, type=?, content=?,
 			ttl=? WHERE id=?`
     
-    result, err := tx.Exec(query, record.DomainID, record.Name, record.Type,
+	result, err := tx.Exec(query, record.DomainID, record.Name, record.Type,
                           record.Content, record.TTL, record.ID)
-    if err != nil {
-    	g.Logger.Errorf("UpdateRecord() update name:%s err:%s", record.Name, err)
-        return 0, err
-    }
+	if err != nil {
+ 		g.Logger.Errorf("UpdateRecord() update name:%s err:%s", record.Name, err)
+		return 0, err
+	}
     
-    rowsAffected, err := result.RowsAffected()
-    if err != nil {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		g.Logger.Errorf("UpdateRecord() affect name:%s err:%s", record.Name, err)
-        return 0, err
-    }
+		return 0, err
+	}
 
 	return rowsAffected, nil
 }
@@ -228,23 +259,25 @@ func DeleteRecordByID(id int64) (int64, error) {
 
 	query := "DELETE FROM records WHERE id = ?"
 
-	result, localErr := tx.Exec(query, id)
+	result, err := tx.Exec(query, id)
 
-	if localErr != nil {
+	if err != nil {
 		g.Logger.Errorf("DeleteRecordByID() delete id %d, err: %s", id, err)
-		return 0, localErr
+		return 0, err
 	}
 
-	rowsAffected, localErr := result.RowsAffected()
-	if localErr != nil {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		g.Logger.Errorf("DeleteRecordByID() affect id %d, err: %s", id, err)
-		return 0, localErr
+		return 0, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		g.Logger.Errorf("DeleteRecordByID() failed to commit transaction: %v", err)
 		return  0, err
 	}
+	// 避免defer rollback在commit后报错
+	tx.Rollback()
 
 	return rowsAffected, nil
 }
@@ -305,35 +338,39 @@ func compressSpaces(s string) string {
 
 func GetRecordsByPageLimit(page int, per_page int) (records []*Record, err error) {
 
-	dnsIp := g.Config().DnsServer
-	ipstr := strings.Join(dnsIp, "','")
-	sqlDnsIp  := fmt.Sprintf("'%s'", ipstr)
+	dnsIpList := g.Config().DnsServer
+	ipstr := strings.Join(dnsIpList, "','")
+	sqlDnsIp := fmt.Sprintf("'%s'", ipstr)
 
 	var rows *sql.Rows
-	var query string
 
-	query = fmt.Sprintf("SELECT id, domain_id, name, type, content, ttl" +
-		" FROM records where content not in (%s) and type = 'A' order by id", sqlDnsIp)
+	query := "SELECT id, domain_id, name, type, content, ttl FROM records " +
+		"WHERE type = 'A' AND content NOT IN (" + sqlDnsIp + ") ORDER BY id "
+
 
 	if  per_page > 0 {
 		offset := (page - 1) * per_page
-		query += fmt.Sprintf(" limit %d, %d", offset, per_page)
+		query += " LIMIT ?, ?"
+		rows, err = DB.Query(query, offset, per_page)
+	} else {
 		rows, err = DB.Query(query)
 	}
 
-	rows, err = DB.Query(query)
-
-	if g.Config().Debug == true {
-		g.Logger.Infof("GetRecordsByPageLimit() query: %s", query)
-	}
-
+	// defer rows.Close()
+	defer func() {
+		if rows != nil {
+			_ = rows.Close()
+		}
+	}()
 
 	if err != nil {
 		g.Logger.Errorf("GetRecordsByPageLimit() query error: %s", err)
 		return records, err
 	}
 
-	defer rows.Close()
+	if g.Config().Debug == true {
+		g.Logger.Infof("GetRecordsByPageLimit() query: %s", query)
+	}
 
 	for rows.Next() {
 
@@ -363,14 +400,14 @@ func GetRecordsByPageLimit(page int, per_page int) (records []*Record, err error
 	return records, nil
 }
 
-
 func GetRecordsCount() (count int, err error) {
-	dnsIp := g.Config().DnsServer
-	ipstr := strings.Join(dnsIp, "','")
-	sqlDnsIp := fmt.Sprintf("'%s'", ipstr)
+	dnsIpList := g.Config().DnsServer
+	ipstr := strings.Join(dnsIpList, "','")
+	sqlDnsIp  := fmt.Sprintf("'%s'", ipstr)
 
-	query := fmt.Sprintf("SELECT count(id) FROM records " +
-		"where content not in (%s) and type = 'A' order by id", sqlDnsIp)
+
+	query := "SELECT count(id) FROM records WHERE type = 'A' AND content NOT IN (" +
+	  sqlDnsIp + ")"
 
 	err = DB.QueryRow(query).Scan(&count)
 
@@ -382,20 +419,20 @@ func GetRecordsCount() (count int, err error) {
 	return count, nil
 }
 
+
 func GetHostRecordsCount(HostDNS Record) (count int, err error) {
 
 	hostname  := HostDNS.Name
 	domain_id := HostDNS.DomainID
 
-	query := fmt.Sprintf("SELECT count(id) FROM records " +
-		" where  type = 'A' and name = '%s' and domain_id = %d",
-		hostname, domain_id)
+	query := `SELECT count(id) FROM records 
+		WHERE type = 'A' AND name = ? AND domain_id = ?`
 
 	if g.Config().Debug == true {
 		g.Logger.Debugf("GetHostRecordsCount() query: %s", query)
 	}
 
-	err = DB.QueryRow(query).Scan(&count)
+	err = DB.QueryRow(query, hostname, domain_id).Scan(&count)
 
 	if err != nil {
 		g.Logger.Errorf("GetHostRecordsCount() query error: %s", err)
