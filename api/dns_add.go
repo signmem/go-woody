@@ -6,9 +6,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
+	"github.com/signmem/go-woody/tools"
 	"io"
 	"net/http"
 	"encoding/json"
+	"os"
+	"strings"
 )
 
 func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
@@ -64,9 +67,13 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	successAdd := 0
 	falseAdd := 0
 
+	var zoneBuf strings.Builder
+
 	if g.Config().Debug == true {
 		g.Logger.Debugf("dnsAdd() add %s", hostDict.String())
 	}
+
+	defaultDns := g.Config().DNS
 
 	for _, host := range hostDict.Hosts {
 
@@ -106,7 +113,6 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 					g.Logger.Error( msg )
 					break
 				}
-
 			}
 
 			if ipExists == true {
@@ -118,14 +124,50 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		if err := addSingleHost(host) ; err != nil {
 			g.Logger.Errorf("dnsAdd() add host %s error: %s", host.Hostname, err)
 			falseAdd += 1
+			continue
 		} else {
 			successAdd += 1
 			if g.Config().Debug == true {
 				g.Logger.Debugf("dnsAdd() Debug: add hostname %v", hostName)
 			}
+
+			if g.Config().Named == true {
+				forwaroders := fmt.Sprintf("zone \"%s\" IN { type forward; forwarders " +
+					"{ %s port %s; }; };\n", hostName, defaultDns.IP, defaultDns.Port)
+				zoneBuf.WriteString(forwaroders)
+			}
+		}
+	}
+
+	zoneFile := g.Config().ZoneFile
+
+	if zoneBuf.Len() > 0 && g.Config().Named == true {
+		f, err := os.OpenFile(zoneFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			msg := fmt.Sprintf("dnsAdd() zone file %s open fail", zoneFile)
+			g.Logger.Error(msg)
+			htmlMsg.Msg = msg
+		}
+
+		_, err = f.WriteString(zoneBuf.String())
+		_ = f.Close()
+
+		if err != nil {
+			msg := fmt.Sprintf("dnsAdd() zone file %s write fail", zoneFile)
+			g.Logger.Error(msg)
+			htmlMsg.Msg = msg
+		}
+
+		err = tools.RestartNamed()
+		if err != nil {
+			msg := fmt.Sprintf("dnsAdd() Error: restart named %s", err)
+			g.Logger.Error(msg)
+			htmlMsg.Msg = msg
+			return htmlMsg, err
 		}
 
 	}
+
 
 	var addStatus DnsAddStatus
 	addStatus.Success = successAdd

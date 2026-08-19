@@ -72,7 +72,8 @@ def send_post_request(hosts_data, api_url="http://localhost:8080/api/hosts/"):
 
 def main():
     debug = False
-    hosts_filename = "hosts.dnsmasq.conf.3"  # hosts name
+    #hosts_filename = "hosts.dnsmasq.conf.3"  # hosts name
+    hosts_filename = "/tmp/hosts.dnsmasq.conf"
     api_url = "http://localhost:8080/api/hosts/"  # API URL
     
     hosts_data = parse_hosts_file(hosts_filename)

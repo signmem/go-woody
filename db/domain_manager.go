@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/signmem/go-woody/g"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
 )
+
 
 func InsertDomain(tx *sql.Tx, domain Domain) (int64, error) {
 
@@ -138,16 +140,6 @@ func GetDomainsByName(name string) (*Domain, error) {
 		return nil, fmt.Errorf("database query failed for domain '%s': %w", name, err)
 	}
 
-    /*
-    if err != nil {
-        if err == sql.ErrNoRows {
-			g.Logger.Errorf("GetDomainsByName() query %s error %s", name, err)
-            return nil, nil
-        }
-		g.Logger.Errorf("GetDomainsByName() query error %s", err)
-        return nil, err
-    }
-    */
 
 	g.Logger.Debugf("GetDomainsByName(): successfully retrieved domain '%s' (ID: %d)", name, domain.ID)
     return &domain, nil
@@ -199,17 +191,36 @@ func generateDomainLevels(domainParts []string) []string {
 
 
 func IsValidDomain(hostname string) bool {
+
+	// remove domain.  (last .)
+	hostname = strings.TrimSuffix(hostname, ".")
+
 	if len(hostname) == 0 || len(hostname) > 253 {
 		return false
 	}
-	domainRegex := `^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])\.([a-zA-Z]{2,}|xn--[a-zA-Z0-9]+)$`
+
+	// remove hostname:port  usage
+	if strings.Contains(hostname, ":") {
+		var err error
+		hostname, _, err = net.SplitHostPort(hostname)
+		if err != nil {
+			return false
+		}
+	}
+
+	labels := strings.Split(hostname, ".")
+
+	// support 162.com 2 level domain
+	if len(labels) < 2 {
+		return false
+	}
+
+	domainRegex := `^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 	matched, _ := regexp.MatchString(domainRegex, hostname)
+
 	if matched {
 		return true
 	}
-
-	multiLevelRegex := `^([a-zA-Z0-9][-a-zA-Z0-9]{0,61}[a-zA-Z0-9]\.)+([a-zA-Z]{2,})$`
-	matched, _ = regexp.MatchString(multiLevelRegex, hostname)
 
 	return matched
 }
@@ -258,4 +269,94 @@ func IsValidHostname(hostname string) bool {
 	}
 
 	return true
+}
+
+
+func GetDomainReverseLevels(domain string) []string {
+	domain = strings.Trim(domain, ".")
+	parts := strings.Split(domain, ".")
+
+	if len(parts) < 2 {
+		return []string{domain}
+	}
+
+	levels := make([]string, 0, len(parts)-1)
+
+	for i := 2; i <= len(parts); i++ {
+		levels = append(levels, strings.Join(parts[len(parts)-i:], "."))
+	}
+
+	return levels
+}
+
+
+func GetDomainsByPageLimit(page int, per_page int) (records []*Domain, err error) {
+
+	var rows *sql.Rows
+
+	query := "SELECT id, name, master, type FROM domains Order By id"
+
+	if  per_page > 0 {
+		offset := (page - 1) * per_page
+		query += " LIMIT ?, ?"
+		rows, err = DB.Query(query, offset, per_page)
+	} else {
+		rows, err = DB.Query(query)
+	}
+
+	// defer rows.Close()
+	defer func() {
+		if rows != nil {
+			_ = rows.Close()
+		}
+	}()
+
+	if err != nil {
+		g.Logger.Errorf("GetDomainsByPageLimit() query error: %s", err)
+		return records, err
+	}
+
+	if g.Config().Debug == true {
+		g.Logger.Infof("GetDomainsByPageLimit() query: %s", query)
+	}
+
+	for rows.Next() {
+
+		var record Domain
+		err = rows.Scan(
+			&record.ID,
+			&record.Name,
+			&record.Master,
+			&record.Type,
+		)
+
+		if err != nil {
+			g.Logger.Errorf("GetDomainsByPageLimit() scan error: %s", err)
+			return records, err
+		}
+
+		records = append(records, &record)
+	}
+
+	if err = rows.Err(); err != nil {
+		g.Logger.Errorf("GetDomainsByPageLimit() rows iteration error: %s", err)
+		return records, err
+	}
+
+	return records, nil
+}
+
+
+func GetDomainCount() (count int, err error) {
+
+	query := "SELECT count(id) FROM Records"
+
+	err = DB.QueryRow(query).Scan(&count)
+
+	if err != nil {
+		g.Logger.Errorf("GetDomainCount() query error: %s", err)
+		return 0, err
+	}
+
+	return count, nil
 }

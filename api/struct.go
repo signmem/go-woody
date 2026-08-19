@@ -2,11 +2,17 @@ package api
 
 import (
 	"fmt"
+	"github.com/signmem/go-woody/db"
 	"strings"
 )
 
 type HostCreate struct {
 	Hosts		[]HostParams		`json:"hosts"`
+}
+
+type DomainCreate struct {
+	Domains 	[]string			`json:"Domains"`
+	Master 		string 				`json:"master, omitempty"`
 }
 
 type HostParams struct {
@@ -37,9 +43,23 @@ func (this *HostCreate) String() string {
 	return builder.String()
 }
 
+func (this *DomainCreate) String() string {
+	var builder strings.Builder
+	for _, domain := range this.Domains {
+		builder.WriteString(fmt.Sprintf("domain: %s", domain))
+	}
+	return builder.String()
+}
 
 type DNSRecord struct {
 	Hosts		[]DNSHost		`json:"hosts"`
+	Page		int				`json:"page"`
+	PerPage		int				`json:"per_page"`
+	Total		int				`json:"total"`
+}
+
+type DomainRecord struct {
+	Domains 	[]db.Domain		`json:"domains"`
 	Page		int				`json:"page"`
 	PerPage		int				`json:"per_page"`
 	Total		int				`json:"total"`
@@ -49,4 +69,9 @@ type DNSHost struct {
 	Hostname		string		`json:"hostname"`
 	ID				int64		`json:"id"`
 	IP				string		`json:"ip"`
+}
+
+type DomainInfo struct {
+	DomainName 		string		`json:"domain"`
+	DomainID 		int64		`json:"domain_id"`
 }

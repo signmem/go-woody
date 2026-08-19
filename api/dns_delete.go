@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
+	"github.com/signmem/go-woody/tools"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,7 +36,6 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 		return record, msg
 
 	}
-
 
 	tx, err := db.DB.Begin()
 	if err != nil {
@@ -86,6 +86,25 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 		g.Logger.Debug(msg)
 	}
 
+	zoneFile := g.Config().ZoneFile
+	if g.Config().Named == true {
+
+		err = RemoveZoneFromFile(zoneFile,  aRecord.Name)
+		if err != nil {
+			msg := fmt.Errorf("Error: domainDelete() delete domain  %s file " +
+				"write error: %s",  aRecord.Name, err)
+			g.Logger.Error(msg)
+			// return domaininfo, msg
+		}
+
+		err = tools.RestartNamed()
+		if err != nil {
+			msg := fmt.Sprintf("domainDelete() Error: restart named %s", err)
+			g.Logger.Error(msg)
+			return record, err
+		}
+
+	}
 
 	record.IP        = aRecord.Content
 	record.Hostname  = aRecord.Name

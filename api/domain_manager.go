@@ -42,7 +42,7 @@ func dnsDomainAdd(tx *sql.Tx, domainStr string) (id int64, err error) {
 	var domainDB db.Domain
 	domainDB.Type = "NATIVE"
 	domainDB.Name  = domainStr
-	domainDB.Master = ""
+	domainDB.Master = nil
 
 	if g.Config().Debug == true {
 		g.Logger.Debugf("dnsDomainAdd() add domain %v", domainDB)

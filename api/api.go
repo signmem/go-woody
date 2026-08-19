@@ -7,27 +7,10 @@ import (
 	"github.com/signmem/go-woody/g"
 )
 
-/*
-func healthCheck() {
-	http.HandleFunc("/_health_check",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("ok"))
-		})
-}
-
-func apiControll() {
-	ttp.HandleFunc("/api/hosts", handleHosts)
-}
-
-
-*/
-
-
 
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ok"))
 }
-
 
 func handleHosts(w http.ResponseWriter, r *http.Request) {
 
@@ -98,73 +81,62 @@ func isContentTypeJson(r *http.Request) bool {
 }
 
 
-/*
 
-	var hostsHandler =	func(w http.ResponseWriter, r *http.Request) {
+func handleDomains(w http.ResponseWriter, r *http.Request) {
 
-			if r.Method == http.MethodPost {
-
-				// api post 请求 添加域名
-
-				data, err := dnsAdd(r)
-				if err != nil {
-					RenderErrorJson(w, data.Msg)
-					return
-				}
-
-				RenderJson(w, data)
-				return
-			}
-
-			if r.Method == http.MethodGet {
-
-				// api get 请求 域名查询
-
-				dnsInfo, err := dnsGet(r)
-
-				if err != nil {
-					msg := fmt.Sprintf("%s", err)
-					RenderErrorJson(w, msg)
-					return
-				}
-
-				RenderJson(w, dnsInfo)
-				return
-			}
-
-			if r.Method == http.MethodDelete {
-
-				data, err := dnsDelete(r)
-
-				if err != nil {
-					msg := fmt.Sprintf("%s", err)
-					RenderErrorJson(w, msg)
-					return
-				}
-
-				RenderJson(w, data)
-				return
-			}
-
-			if r.Method == http.MethodPut {
-
-				// api put 请求 修改域名
-
-				data, err := dnsModify(r)
-
-				if err != nil {
-					msg := fmt.Sprintf("%s", err)
-					RenderErrorJson(w, msg)
-					return
-				}
-
-				RenderJson(w, data)
-				return
-			}
-		}
-
-	http.HandleFunc("/api/hosts", hostsHandler)
-	http.HandleFunc("/api/hosts/", hostsHandler)
+	switch r.Method {
+	case http.MethodPost:
+		handleHDomainPost(w, r)
+	case http.MethodDelete:
+		handleDomainDelete(w, r)
+	case http.MethodGet:
+		handleDomainGet(w, r)
+	case http.MethodOptions:
+		// CORS header
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		// 不支持的方法
+		RenderFailJson(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
-*/
+
+// handleDomainGet GET /api/hosts 查询域名
+func handleDomainGet(w http.ResponseWriter, r *http.Request) {
+
+	domainInfo, err := domainGet(r)
+	if err != nil {
+		g.Logger.Errorf("domainGet failed: %v", err)
+		RenderFailJson(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	RenderJson(w, domainInfo)
+}
+
+// handleHDomainPost POST /api/domains 添加域名
+func handleHDomainPost(w http.ResponseWriter, r *http.Request) {
+
+	// max 8MB BODY limit
+	r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
+
+	data, err := domainAdd(r)
+	if err != nil {
+		g.Logger.Errorf("domainAdd failed: %v", err)
+		RenderFailJson(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	RenderJson(w, data)
+}
+
+
+// handleDomainDelete DELETE /api/domains 删除域名
+func handleDomainDelete(w http.ResponseWriter, r *http.Request) {
+
+	data, err := domainDelete(r)
+	if err != nil {
+		g.Logger.Errorf("domainDelete failed: %v", err)
+		RenderFailJson(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	RenderJson(w, data)
+}

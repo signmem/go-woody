@@ -86,20 +86,19 @@ func AutoRender(w http.ResponseWriter, data interface{}, err error) {
 
 func Start() error {
 
-        address := g.Config().Http.Address
-        port := g.Config().Http.Port
-        listenAddr := address + ":" + port
+	address := g.Config().Http.Address
+	port := g.Config().Http.Port
+	listenAddr := address + ":" + port
 
-	// apiControll()
-	// healthCheck()
 	mux := http.NewServeMux()
 	registerRoutes(mux)
 
-        s := &http.Server{
-                Addr:           listenAddr,
+	s := &http.Server{
+		Addr:           listenAddr,
 		Handler:        mux,
-                MaxHeaderBytes: 1 << 30,
-        }
+		MaxHeaderBytes: 1 << 30,
+	}
+
 	g.Logger.Infof("api server listening on: %s", listenAddr)
 	return s.ListenAndServe()
 }
@@ -109,4 +108,6 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/_health_check", healthCheckHandler)
 	mux.HandleFunc("/api/hosts", handleHosts)
 	mux.HandleFunc("/api/hosts/", handleHosts)
+	mux.HandleFunc("/api/v2/domains", handleDomains)
+	mux.HandleFunc("/api/v2/domains/", handleDomains)
 }

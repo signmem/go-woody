@@ -8,7 +8,14 @@ type GlobalConfig struct {
 	DnsServer		[]string	`json:"dns_server"`
 	Http			*HttpConfig	`json:"http"`
 	ZoneFile 		string		`json:"zone_file"`
+	Named 			bool		`json:"named"`
+	DNS				*DNSConfig	`json:"pdns"`
 	MySQL			*DBConfig	`json:"mysql"`
+}
+
+type DNSConfig struct {
+	IP 		string			`json:"ip"`
+	Port 	string 			`json:"port"`
 }
 
 type HttpConfig struct {

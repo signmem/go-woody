@@ -6,10 +6,10 @@ import (
 )
 
 type Domain struct {
-    ID             int64           `db:"id"`
-    Name           string         `db:"name"`
-    Master         string         `db:"master"`
-    Type           string         `db:"type"`
+    ID             int64            `db:"id"`
+    Name           string           `db:"name"`
+    Master         *string          `db:"master"`
+    Type           string           `db:"type"`
 }
 
 
@@ -20,6 +20,13 @@ type Record struct {
     Type     string         `db:"type"`
     Content  string         `db:"content"`
     TTL      int            `db:"ttl"`
+}
+
+type DomainMeta struct {
+    ID          int64           `db:"id"`
+    DomainID    int64           `db:"domain_id"`
+    Kind        string          `db:"kind"`
+    Content     string          `db:"content"`
 }
 
 

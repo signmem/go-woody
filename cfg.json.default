@@ -1,0 +1,26 @@
+{
+    "debug":true,
+    "log_file": "./app.log",
+    "log_maxage": 432000,
+    "log_rotateage": 86400,
+    "dns_server": ["10.189.20.49", "10.199.212.241"],  // 当前集群可用的默认 dns 服务器
+    "named": true,
+    "zone_file": "/etc/named/zone.conf",            // named.conf 指定了 forwarders 控制 zone file
+    "pdns": {
+        "ip": "127.0.0.1",
+        "port": "5300"                              // pdns 端口
+    },
+    "http": {
+        "address" : "0.0.0.0",
+        "port":  "80"
+    },
+    "mysql": {
+        "max_connection": 100,
+        "max_idel": 10,
+        "db_user": "pdns",
+        "db_pass": "password",
+        "db_host": "localhost",
+        "db_port": "3306",
+        "db_name": "pdns"
+    }
+}
