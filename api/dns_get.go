@@ -13,10 +13,6 @@ import (
 
 func dnsGet(r *http.Request) (v interface{}, err error) {
 
-	defer func() { 
-		_ = r.Body.Close() 
-	}()
-
 	cleanPath := path.Clean(r.URL.Path)
 	pathSegments := strings.Split(cleanPath, "/")
 	segments := make([]string, 0)
@@ -99,28 +95,22 @@ func validatePaginationParams(params url.Values) (int, int, error) {
 func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err error) {
 
 	if g.Config().Debug == true {
-		g.Logger.Infof("dnsGet() page is %d, per_page is %d", m_page, m_per_page)
+		g.Logger.Infof("page is %d, per_page is %d", m_page, m_per_page)
 	}
 
 	records, err := db.GetRecordsByPageLimit(m_page, m_per_page)
 
 	if err != nil {
-		g.Logger.Errorf("dnsGet() GetRecordsByPageLimit() error: %s", err)
+		g.Logger.Errorf("GetRecordsByPageLimit() error: %s", err)
 		return dnsDBRecord, fmt.Errorf("Error: failed to get records: %w", err)
 	}
-
-	// 修复：无数据不报错，返回空列表即可
-	// if len(records) == 0 {
-	// 	return dnsDBRecord, fmt.Errorf("Error: not records found.")
-	// }
 
 	count, err := db.GetRecordsCount()
 
 	if err != nil {
-		g.Logger.Errorf("dnsGet() GetRecordsCount() error: %s", err)
+		g.Logger.Errorf("GetRecordsCount() error: %s", err)
 		count = 0
 	}
-
 
 	for _, record := range records {
 		var hostInfo DNSHost
@@ -139,6 +129,8 @@ func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err err
 
 }
 
+
+
 func dnsGetSingleHost(domain_id int) (dnshost DNSHost, err error) {
 
 	dnsARecord, err := db.GetARecordsByDomainID(domain_id)
@@ -154,3 +146,4 @@ func dnsGetSingleHost(domain_id int) (dnshost DNSHost, err error) {
 
 	return dnshost, nil
 }
+

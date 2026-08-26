@@ -12,6 +12,11 @@ type Domain struct {
     Type           string           `db:"type"`
 }
 
+type DomainSOA struct {
+    DomainID        int64           `json:"domain_id"`
+    DomainName      string          `json:"domain_name"`
+    DomainSOA       int64           `json:"domain_soa"`
+}
 
 type Record struct {
     ID       int64          `db:"id"`

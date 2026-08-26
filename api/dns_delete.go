@@ -13,11 +13,6 @@ import (
 
 func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 
-
-	defer func() {
-		_ = r.Body.Close()
-	}()
-
 	path := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
 	pathParts := strings.Split(path, "/")
 
@@ -39,24 +34,26 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-
 		msg := fmt.Errorf("Error: failed to begin transaction")
 		g.Logger.Error(msg)
 		return record, msg
-
 	}
 
+	rollbackNeeded := true
 	defer func() {
-		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			msg := fmt.Sprintf("dnsDelete() Error: transaction rollback error")
-			g.Logger.Errorf(msg)
+		if rollbackNeeded {
+			if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+				msg := fmt.Sprintf("dnsDelete() Error: transaction rollback error")
+				g.Logger.Errorf(msg)
+			}
 		}
 	}()
 
 	aRecord, err := db.GetARecordsByDomainID(domain_id)
+
 	if err != nil || aRecord.DomainID != int64(domain_id)  {
 
-		msg := fmt.Errorf("Error: Host %d not found in DB.", pathParts[0])
+		msg := fmt.Errorf("Error: Host %s not found in DB.", pathParts[0])
 		g.Logger.Error(msg)
 		return record, msg
 
@@ -79,6 +76,7 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 		return record, msg
 
 	}
+	rollbackNeeded = false
 
 	msg := fmt.Sprintf("dnsDelete() delete hostname %s Success", aRecord.Name)
 

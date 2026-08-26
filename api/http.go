@@ -105,9 +105,15 @@ func Start() error {
 
 
 func registerRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/_health_check", healthCheckHandler)
-	mux.HandleFunc("/api/hosts", handleHosts)
-	mux.HandleFunc("/api/hosts/", handleHosts)
-	mux.HandleFunc("/api/v2/domains", handleDomains)
+	mux.HandleFunc("/_health_check",   healthCheckHandler)
+	mux.HandleFunc("/api/hosts",       handleHosts)
+	mux.HandleFunc("/api/hosts/",      handleHosts)
+	mux.HandleFunc("/api/v2/domains",  handleDomains)
 	mux.HandleFunc("/api/v2/domains/", handleDomains)
+	mux.HandleFunc("/api/v2/hosts",    handleHostNames)
+	mux.HandleFunc("/api/v2/hosts/",   handleHostNames)
+	mux.HandleFunc("/api/v2/slave",    handleSlaveDomain)
+	mux.HandleFunc("/api/v2/slave/",   handleSlaveDomain)
+	mux.HandleFunc("/api/v2/soa",      handleSOA)
+	mux.HandleFunc("/api/v2/soa/",     handleSOA)
 }

@@ -11,6 +11,9 @@ import (
 )
 
 
+// InsertDomain 在事务内新建PDNS域名，同时自动生成NS/A/SOA记录
+// !!!重要：本函数内部不会执行tx.Rollback；返回err!=nil时，调用方必须执行tx.Rollback()，否则会产生残缺domain脏数据
+// !!!调用前建议先调用 GetDomainsByName 判断域名是否已存在
 func InsertDomain(tx *sql.Tx, domain Domain) (int64, error) {
 
     query := `INSERT INTO domains (name, master, type) VALUES (?, ?, ?)`
@@ -110,8 +113,6 @@ func GetDomainByID(id int64) (*Domain, error) {
     return &domain, nil
 }
 
-
-
 func GetDomainsByName(name string) (*Domain, error) {
 
 	if name == "" {
@@ -133,16 +134,170 @@ func GetDomainsByName(name string) (*Domain, error) {
 		if err == sql.ErrNoRows {
 			// Info
 			g.Logger.Infof("GetDomainsByName(): domain '%s' not found", name)
-			return nil, fmt.Errorf("domain '%s' not found", name)
+			return nil, err
 		}
 
 		g.Logger.Errorf("GetDomainsByName(): database query failed for domain '%s'. Error: %v", name, err)
-		return nil, fmt.Errorf("database query failed for domain '%s': %w", name, err)
+		return nil, err
 	}
 
 
 	g.Logger.Debugf("GetDomainsByName(): successfully retrieved domain '%s' (ID: %d)", name, domain.ID)
     return &domain, nil
+}
+
+
+func GetDomainSOAByID(domainID int64) (domain_soa DomainSOA, err error ) {
+	query := `SELECT id, domain_id, name, type, content, ttl FROM records where type='SOA' and domain_id = ?`
+
+	var record Record
+
+	err = DB.QueryRow(query, domainID).Scan(
+		&record.ID,
+		&record.DomainID,
+		&record.Name,
+		&record.Type,
+		&record.Content,
+		&record.TTL,
+	)
+
+	if err != nil {
+		g.Logger.Errorf("GetDomainSOAByID() get %d soa record error:%s", domainID, err)
+		return domain_soa, err
+	}
+
+	content := compressSpaces(record.Content)
+	c_sp := strings.Split(content, " ")
+	if len(c_sp) < 7 {
+		err := fmt.Errorf("soa content format invalid, split len < 7")
+		g.Logger.Errorf("GetDomainSOAByID() domainID%d: %v", domainID, err)
+		return domain_soa, err
+	}
+
+	numStr := c_sp[2]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		g.Logger.Errorf("GetDomainSOAByID() SOA format parse num error: %s", err)
+		return domain_soa, err
+	}
+
+	if num >= 9223372036854775806 {
+		g.Logger.Errorf("GetDomainSOAByID() SOA number match MaxInt Value")
+		return domain_soa, err
+	}
+
+	domain_soa.DomainID    = domainID
+	domain_soa.DomainName  = record.Name
+	domain_soa.DomainSOA   = int64(num)
+
+	return domain_soa, nil
+}
+
+
+
+func GetDomainSOAByName(domainName string) (domain_soa DomainSOA, err error ) {
+	query := `SELECT id, domain_id, name, type, content, ttl FROM records where type='SOA' and name = ?`
+
+	var record Record
+
+	err = DB.QueryRow(query, domainName).Scan(
+		&record.ID,
+		&record.DomainID,
+		&record.Name,
+		&record.Type,
+		&record.Content,
+		&record.TTL,
+	)
+
+	if err != nil {
+		g.Logger.Errorf("GetDomainSOAByID() get %s soa record error:%s", domainName, err)
+		return domain_soa, err
+	}
+
+	content := compressSpaces(record.Content)
+	c_sp := strings.Split(content, " ")
+	if len(c_sp) < 7 {
+		err := fmt.Errorf("soa content format invalid, split len < 7")
+		g.Logger.Errorf("GetDomainSOAByID() domain %s: %v", domainName, err)
+		return domain_soa, err
+	}
+
+	numStr := c_sp[2]
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		g.Logger.Errorf("GetDomainSOAByID() SOA format parse num error: %s", err)
+		return domain_soa, err
+	}
+
+	if num >= 9223372036854775806 {
+		g.Logger.Errorf("GetDomainSOAByID() SOA number match MaxInt Value")
+		return domain_soa, err
+	}
+
+	domain_soa.DomainID    = record.DomainID
+	domain_soa.DomainName  = record.Name
+	domain_soa.DomainSOA   = int64(num)
+
+	return domain_soa, nil
+}
+
+
+func GetDomainSOA() (domain_soas []DomainSOA, err error ) {
+
+	all_db_records, err  :=  GetSOARecords()
+
+	if err != nil {
+		return domain_soas, err
+	}
+
+	if len(all_db_records) == 0 {
+		err := fmt.Errorf("GetDomainSOA() found none records in db")
+		g.Logger.Error(err)
+		return domain_soas, err
+	}
+
+	for  _,  record := range all_db_records {
+
+		var domain_soa DomainSOA
+
+		if record.Type != "SOA" {
+			continue
+		}
+
+		domain_soa.DomainID = record.DomainID
+		domain_soa.DomainName = record.Name
+
+		content := compressSpaces(record.Content)
+		c_sp := strings.Split(content, " ")
+
+		if len(c_sp) < 7 {
+			err := fmt.Errorf("GetDomainSOA() domain %s: split len <7", record.Name)
+			g.Logger.Error( err )
+			return domain_soas, err
+		}
+
+		numStr := c_sp[2]
+		num, err := strconv.Atoi(numStr)
+
+		if err != nil {
+			inErr := fmt.Errorf("GetDomainSOAByID()  %s SOA format parse num error: %s",record.Name,  err)
+			g.Logger.Error(inErr)
+			return domain_soas, inErr
+		}
+
+		if num >= 9223372036854775806 {
+			inErr := fmt.Errorf("GetDomainSOAByID() %s SOA number match MaxInt Value", record.Name)
+			g.Logger.Error(inErr)
+			return domain_soas, inErr
+		}
+
+		domain_soa.DomainSOA   = int64(num)
+
+		domain_soas = append(domain_soas, domain_soa)
+	}
+
+
+	return domain_soas, nil
 }
 
 
@@ -225,14 +380,15 @@ func IsValidDomain(hostname string) bool {
 	return matched
 }
 
-func ListReverse(list []string) ([]string) {
 
-	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
-		list[i], list[j] = list[j], list[i]
+func ListReverse(list []string) []string {
+	out := make([]string, len(list))
+	copy(out, list)
+	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
+		out[i], out[j] = out[j], out[i]
 	}
-	return list
+	return out
 }
-
 
 
 func IsValidHostname(hostname string) bool {
@@ -349,7 +505,7 @@ func GetDomainsByPageLimit(page int, per_page int) (records []*Domain, err error
 
 func GetDomainCount() (count int, err error) {
 
-	query := "SELECT count(id) FROM Records"
+	query := "SELECT count(id) FROM domains"
 
 	err = DB.QueryRow(query).Scan(&count)
 
@@ -359,4 +515,51 @@ func GetDomainCount() (count int, err error) {
 	}
 
 	return count, nil
+}
+
+
+func GetAllPDNSDomain(domainType string) (records []*Domain, err error) {
+
+	var query string
+	var rows *sql.Rows
+
+	if domainType != "" {
+		query = "SELECT id, name, master, type From domains where type != 'NATIVE' and type = ?"
+		rows, err = DB.Query(query, domainType)
+	} else {
+		query = "SELECT id, name, master, type From domains where type != 'NATIVE'"
+		rows, err = DB.Query(query)
+	}
+
+	if err != nil {
+		g.Logger.Errorf("GetAllPDNSDomain() query error: %s", err)
+		return records, err
+	}
+
+	defer rows.Close() 
+	for rows.Next() {
+
+		var record Domain
+		err = rows.Scan(
+			&record.ID,
+			&record.Name,
+			&record.Master,
+			&record.Type,
+		)
+
+		if err != nil {
+			g.Logger.Errorf("GetAllPDNSDomain() scan error: %s", err)
+			return records, err
+		}
+
+		records = append(records, &record)
+	}
+
+	if err = rows.Err(); err != nil {
+		g.Logger.Errorf("GetAllPDNSDomain() rows iteration error: %s", err)
+		return records, err
+	}
+
+	return records, nil
+
 }

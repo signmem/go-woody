@@ -1,0 +1,102 @@
+package api
+
+import (
+	"fmt"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"errors"
+	"github.com/signmem/go-woody/db"
+)
+
+
+
+func hostDelete(r *http.Request) (v interface{}, err error) {
+
+	cleanPath := path.Clean(r.URL.Path)
+	pathSegments := strings.Split(cleanPath, "/")
+	segments := make([]string, 0)
+
+	for _, seg := range pathSegments {
+		if seg != "" {
+			segments = append(segments, seg)
+		}
+	}
+
+
+	// do delete from /api/v2/hosts/host_id/ID
+	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
+		segments[2] == "hosts" && segments[3] == "host_id" {
+
+		id := segments[4]
+		idInt, err := strconv.Atoi(id)
+		if err != nil {
+			msg := errors.New("host_id is not digital")
+			return nil, msg
+		}
+
+		dnshosts, err :=  dnsGetSingleHostByIDv2(idInt)
+
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = dnsDeleteSingleHostByDomainIDv2(dnshosts)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return  dnshosts, nil
+
+	}
+
+	// do delete from /api/v2/hosts/host_name/hostName
+	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
+		segments[2] == "hosts" && segments[3] == "host_name" {
+
+		hostname := segments[4]
+		if db.IsValidHostname(hostname) == false {
+			msg := fmt.Errorf("%s not valid hostname",  hostname)
+			return nil, msg
+		}
+
+		dnsARecords, err := db.GetARecordsByHostNamev2(hostname)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if len(dnsARecords) != 1 {
+			msg := fmt.Errorf("%s total count is %d  not unique data.", hostname, len(dnsARecords))
+			return nil, msg
+		}
+
+		var host DNSHostv2
+		host.ID        = dnsARecords[0].ID
+		host.Hostname  = dnsARecords[0].Name
+		host.DomainID  = dnsARecords[0].DomainID
+		host.IP        = dnsARecords[0].Content
+
+		_, err = dnsDeleteSingleHostByDomainIDv2(host)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return  host, nil
+
+	}
+
+	msg := fmt.Errorf("not valid parameters.")
+
+	return nil, msg
+}
+
+func dnsDeleteSingleHostByDomainIDv2(host DNSHostv2) (int64, error) {
+	hostID := host.ID
+	hostName := host.Hostname
+	domainName := GetParentDomain(hostName)
+	return db.DeleteRecordByID(hostID, domainName)
+}

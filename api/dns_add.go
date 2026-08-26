@@ -3,11 +3,11 @@ package api
 import (
 	"database/sql"
 	"fmt"
-	"github.com/pkg/errors"
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
 	"github.com/signmem/go-woody/tools"
 	"io"
+	"mime"
 	"net/http"
 	"encoding/json"
 	"os"
@@ -25,13 +25,15 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
-	headerContentTtype := r.Header.Get("Content-Type")
-	if headerContentTtype != "application/json" {
+	headerContentType := r.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(headerContentType)
+	if err != nil || mediaType != "application/json" {
 		msg := fmt.Errorf("dnsAdd() Error: body not json format")
 		g.Logger.Error(msg)
-		htmlMsg.Msg = "Post data not valid, body not json format!"
+		htmlMsg.Msg = "dnsAdd() Post data not valid, body not json format!"
 		return htmlMsg, msg
 	}
+
 
 	defer func() {
 		_ = r.Body.Close()
@@ -51,9 +53,9 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsAdd() Error: body json unmarsharl error")
+		msg := fmt.Errorf("dnsAdd() Error: body json unmarshal error")
 		g.Logger.Error(msg)
-		htmlMsg.Msg = "Post data not valid, body json unmarsharl format error!"
+		htmlMsg.Msg = "Post data not valid, body json unmarshal format error!"
 		return htmlMsg, msg
 	}
 
@@ -109,8 +111,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 				if dnsRecord.Content == ipaddr && dnsRecord.Name == hostName {
 					ipExists = true
-					msg := fmt.Sprintf("dnsAdd() Error: %s records exists", hostName)
-					g.Logger.Error( msg )
+					g.Logger.Errorf("dnsAdd() Error: %s records exists", hostName)
 					break
 				}
 			}
@@ -119,6 +120,10 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 				falseAdd += 1
 				continue
 			}
+		} else {
+			falseAdd += 1
+			g.Logger.Errorf("dnsAdd() get host %s records query err: %v", hostName, err)
+			continue
 		}
 
 		if err := addSingleHost(host) ; err != nil {
@@ -147,6 +152,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 			msg := fmt.Sprintf("dnsAdd() zone file %s open fail", zoneFile)
 			g.Logger.Error(msg)
 			htmlMsg.Msg = msg
+			return htmlMsg, err
 		}
 
 		_, err = f.WriteString(zoneBuf.String())
@@ -156,6 +162,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 			msg := fmt.Sprintf("dnsAdd() zone file %s write fail", zoneFile)
 			g.Logger.Error(msg)
 			htmlMsg.Msg = msg
+			return htmlMsg, err
 		}
 
 		err = tools.RestartNamed()
@@ -167,7 +174,6 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		}
 
 	}
-
 
 	var addStatus DnsAddStatus
 	addStatus.Success = successAdd
@@ -191,11 +197,12 @@ func addSingleHost(host HostParams) (err error) {
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		return errors.New("addSingleHost() Error: failed to begin transaction")
+		return fmt.Errorf("addSingleHost() Error: failed to begin transaction")
 	}
 
+	rollbackNeeded := true
 	defer func() {
-		if err != nil {
+		if rollbackNeeded {
 			// 只有失败才回滚
 			if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
 				g.Logger.Errorf("addSingleHost() rollback error: %v", rollbackErr)
@@ -207,29 +214,25 @@ func addSingleHost(host HostParams) (err error) {
 	domain_id, err := dnsDomainAdd(tx, hostName)
 
 	if err != nil {
-		msg := fmt.Sprintf("dnsAdd() Error: domain %s add error: %s", hostName, err)
-		return errors.New(msg)
-
+		return fmt.Errorf("dnsAdd() Error: domain %s add error: %s", hostName, err)
 	}
 
 	_, err = dnsHostAdd(tx, domain_id, hostName, ipaddr)
 
 	if err != nil {
-		msg := fmt.Sprintf("dns %s add error: %s", hostName, err)
-		return errors.New(msg)
+		return fmt.Errorf("dns %s add error: %s", hostName, err)
 	}
 
 	err = db.UpdateSOA(tx, hostName)
 
 	if err != nil {
-		msg := fmt.Sprintf("dns %s update SOA error: %s", hostName, err)
-		return errors.New(msg)
+		return fmt.Errorf("dns %s update SOA error: %s", hostName, err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Sprintf("db commit error: %s", err)
-		return errors.New(msg)
+		return fmt.Errorf("db commit error: %s", err)
 	}
+	rollbackNeeded = false
 
 	return nil
 }

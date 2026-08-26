@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"encoding/json"
+	"mime"
 )
 
 func dnsModify(r *http.Request) (record DNSHost, err error) {
@@ -41,11 +42,12 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		return record, msg
 	}
 
-	headerContentTtype := r.Header.Get("Content-Type")
-	if headerContentTtype != "application/json" {
-		msg := fmt.Errorf("Error: body not json format")
-		g.Logger.Error(msg)
-		return record, msg
+	headerContentType := r.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(headerContentType)
+	if err != nil || mediaType != "application/json" {
+	    msg := fmt.Errorf("Error: body not json format")
+	    g.Logger.Error(msg)
+	    return record, msg
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -60,7 +62,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: body json unmarsharl error")
+		msg := fmt.Errorf("dnsModify() Error: body json unmarshal error")
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -76,22 +78,30 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	if err != nil {
 		msg := fmt.Errorf("dnsModify() Error: failed to begin transaction")
 		g.Logger.Error(msg)
-		return record, err
+		return record, msg
 	}
 
+	rollbackNeeded := true
 	defer func() {
-		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			msg := fmt.Sprintf("dnsModify() Error: transaction rollback error")
-			g.Logger.Errorf(msg)
+		if rollbackNeeded {
+			if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+				msg := fmt.Sprintf("dnsModify() Error: transaction rollback error")
+				g.Logger.Errorf(msg)
+			}
 		}
 	}()
 
 	var dnsModify db.Record
 
 	dnsModify.DomainID  = int64(domain_id)
-	dnsModify.Name      = hostDict.Hostname
-	dnsModify.Content   = hostDict.IP
+	dnsModify.Name      = strings.TrimSpace(hostDict.Hostname)
+	dnsModify.Content   = strings.TrimSpace(hostDict.IP)
 
+	if dnsModify.Name == "" || dnsModify.Content  == "" {
+		return record, fmt.Errorf("hostname or ip can not be empty")
+	}
+
+	// GetHostRecordsCount 这里查询只验证 domain_id + name 不会校验 content 
 	count, err :=  db.GetHostRecordsCount(dnsModify)
 	if err != nil {
 		g.Logger.Errorf("dnsModify() get host record count error: %v", err)
@@ -123,6 +133,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		return record, msg
 	}
 
+	// 这里导入 hostname 属于劫持模式 不需要导入完整 domain
 	err = db.UpdateSOA(tx, dnsModify.Name)
 	if err != nil {
 		msg := fmt.Errorf("Error: update SOA error: %s", err)
@@ -135,6 +146,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		g.Logger.Error(msg)
 		return record, msg
 	}
+	rollbackNeeded = false
 
 	msg := fmt.Sprintf("Update id: %d hostname: %s " +
 		" ipaddr: %s success.", dnsModify.DomainID, dnsModify.Name, dnsModify.Content)

@@ -6,8 +6,17 @@ import (
 	"strings"
 )
 
+type DomainHostCreate struct {
+	Domain 		string				`json:"domain"`
+	Hosts 		[]HostParams		`json:"hsots"`
+}
+
 type HostCreate struct {
 	Hosts		[]HostParams		`json:"hosts"`
+}
+
+type SyncSlaveDomain struct {
+	Sync 		bool 				`json:"sync"`
 }
 
 type DomainCreate struct {
@@ -58,6 +67,13 @@ type DNSRecord struct {
 	Total		int				`json:"total"`
 }
 
+type DNSRecordv2 struct {
+	Hosts		[]DNSHostv2		`json:"hosts"`
+	Page		int				`json:"page"`
+	PerPage		int				`json:"per_page"`
+	Total		int				`json:"total"`
+}
+
 type DomainRecord struct {
 	Domains 	[]db.Domain		`json:"domains"`
 	Page		int				`json:"page"`
@@ -71,7 +87,16 @@ type DNSHost struct {
 	IP				string		`json:"ip"`
 }
 
-type DomainInfo struct {
-	DomainName 		string		`json:"domain"`
-	DomainID 		int64		`json:"domain_id"`
+type DNSHostv2 struct {
+	Hostname		string		`json:"hostname"`
+	ID				int64		`json:"id"`
+	DomainID		int64		`json:"domain_ID"`
+	IP				string		`json:"ip"`
 }
+
+
+type DomainInfo struct {
+	DomainName 		string		`json:"domain_name,omitempty"`
+	DomainID 		int64		`json:"domain_id,omitempty"`
+}
+
