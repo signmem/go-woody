@@ -79,8 +79,8 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	for _, host := range hostDict.Hosts {
 
-		hostName := host.Hostname
-		ipaddr := host.IP
+		hostName := strings.TrimSpace(host.Hostname)
+		ipaddr   := strings.TrimSpace(host.IP)
 
 		// 基础空值校验
 		if hostName == "" || ipaddr == "" {

@@ -147,8 +147,8 @@ func GetParentDomain(host string) string {
 
 func addDomainHost(host HostParams) (err error) {
 
-	hostName := host.Hostname
-	ipaddr   := host.IP
+	hostName := strings.TrimSpace(host.Hostname)
+	ipaddr   := strings.TrimSpace(host.IP)
 
 	if db.DB == nil {
 		g.Logger.Error("Database connection is nil - check if initDB() was called")

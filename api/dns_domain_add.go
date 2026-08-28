@@ -60,6 +60,8 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	DomainList.Master = strings.TrimSpace(DomainList.Master)
+
 	if len(DomainList.Domains)  == 0 {
 		msg := fmt.Errorf("domainAdd() Error: DomainList empty")
 		g.Logger.Error(msg)
@@ -97,6 +99,8 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	var zoneBuf strings.Builder
 
 	for _, domain := range DomainList.Domains {
+
+		domain := strings.TrimSpace(domain)
 
 		// 基础空值校验
 		if domain == "" {

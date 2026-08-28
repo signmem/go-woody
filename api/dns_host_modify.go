@@ -67,6 +67,9 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 		return nil, msg
 	}
 
+	hostDict.Hostname = strings.TrimSpace(hostDict.Hostname)
+	hostDict.IP       = strings.TrimSpace(hostDict.IP)
+
 	if isIPv4(hostDict.IP) == false {
 		msg := fmt.Errorf("hostModify() Error: %s not valid ipaddress", hostDict.IP)
 		g.Logger.Error(msg)
@@ -81,21 +84,21 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 		return nil, msg
 	}
 
-	if  hostInfo.Hostname != hostDict.Hostname {
+	if  hostInfo.Hostname != strings.TrimSpace(hostDict.Hostname) {
 		msg := fmt.Errorf("Error: hostname %s not match %s in db", hostDict.Hostname, hostInfo.Hostname)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
-	if hostInfo.IP == hostDict.IP {
+	if hostInfo.IP == strings.TrimSpace(hostDict.IP) {
 		msg := fmt.Errorf("Error: IP %s has not change.", hostDict.IP)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	var updateInfo  db.Record
-	updateInfo.Content   = hostDict.IP
-	updateInfo.Name      = hostDict.Hostname
+	updateInfo.Content   = strings.TrimSpace(hostDict.IP)
+	updateInfo.Name      = strings.TrimSpace(hostDict.Hostname)
 	updateInfo.DomainID  = hostInfo.DomainID
 	updateInfo.ID        = hostInfo.ID
 
