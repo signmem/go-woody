@@ -41,7 +41,7 @@ func domainSOAGet(r *http.Request) (v interface{}, err error) {
 	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
 		segments[2] == "soa" && segments[3] == "domain_name" {
 
-		domain_name := segments[4]
+		domain_name := strings.TrimSpace(segments[4])
 		if len(domain_name) == 0 {
 			msg := fmt.Errorf("domain_name can not be none")
 			return nil, msg

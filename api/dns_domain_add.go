@@ -119,6 +119,10 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 		subDomainLevel := db.GetDomainReverseLevels(domain)
 
+		if ! g.Config().AutoParent {
+			subDomainLevel = []string{domain}
+		}
+
 		for _, subDomain := range subDomainLevel {
 
 			if subDomain == "" {

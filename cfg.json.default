@@ -6,6 +6,7 @@
     "dns_server": ["10.189.20.49", "10.199.212.241"],  // 当前集群可用的默认 dns 服务器
     "named": true,
     "zone_file": "/etc/named/zone.conf",             // 默认更新 named zone forward 功能
+    "auto_parent": false,
     "pdns": {
         "ip": "127.0.0.1",
         "port": "5300"

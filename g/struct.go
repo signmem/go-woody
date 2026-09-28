@@ -10,6 +10,7 @@ type GlobalConfig struct {
 	ZoneFile 		string		`json:"zone_file"`
 	Named 			bool		`json:"named"`
 	DNS				*DNSConfig	`json:"pdns"`
+	AutoParent		bool		`json:"auto_parent"`
 	MySQL			*DBConfig	`json:"mysql"`
 }
 
