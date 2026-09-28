@@ -60,6 +60,8 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	TrimAllStrings(&DomainList)
+
 	DomainList.Master = strings.TrimSpace(DomainList.Master)
 
 	if len(DomainList.Domains)  == 0 {

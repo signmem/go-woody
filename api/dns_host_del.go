@@ -56,7 +56,7 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
 		segments[2] == "hosts" && segments[3] == "host_name" {
 
-		hostname := segments[4]
+		hostname :=  strings.TrimSpace(segments[4])
 		if db.IsValidHostname(hostname) == false {
 			msg := fmt.Errorf("%s not valid hostname",  hostname)
 			return nil, msg

@@ -41,6 +41,8 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 		return nil, msg
 	}
 
+	TrimAllStrings(&domainInfo)
+
 	if domainInfo.DomainID == 0 && domainInfo.DomainName == "" {
 		msg := fmt.Errorf("domainSOAFlush() Error: domain_id and domain_name is None")
 		g.Logger.Error(msg)

@@ -67,6 +67,8 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 		return nil, msg
 	}
 
+	TrimAllStrings(&hostDict)
+
 	hostDict.Hostname = strings.TrimSpace(hostDict.Hostname)
 	hostDict.IP       = strings.TrimSpace(hostDict.IP)
 

@@ -67,6 +67,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		return record, msg
 	}
 
+	TrimAllStrings(&hostDict)
 
 	if isIPv4(hostDict.IP) == false {
 		msg := fmt.Errorf("Error: %s not valid ipaddress", hostDict.IP)

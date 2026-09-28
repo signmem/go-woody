@@ -45,6 +45,8 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	TrimAllStrings(&syncStatus)
+
 	if syncStatus.Sync == false{
 		msg := fmt.Errorf("syncSlaveDomain() Error: sync status is false")
 		g.Logger.Error(msg)

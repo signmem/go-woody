@@ -49,6 +49,8 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	TrimAllStrings(&hostDict)
+
 	if len(hostDict.Hosts)  == 0 {
 		msg := fmt.Errorf("hostAdd() Error: HostCreate empty")
 		g.Logger.Error(msg)

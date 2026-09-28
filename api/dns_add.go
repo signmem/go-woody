@@ -59,6 +59,8 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
+	TrimAllStrings(&hostDict)
+
 	if len(hostDict.Hosts)  == 0 {
 		msg := fmt.Errorf("dnsAdd() Error: HostCreate empty")
 		g.Logger.Error(msg)
