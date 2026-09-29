@@ -210,17 +210,10 @@ func GetARecordsByHostIPv2(ipaddr string) (records []Record,  err error) {
 func GetARecordsByDomainNamev2(domainID int, domainName string) (records []Record,  err error) {
 
 
-	dnsContent := "'dns0." + domainName + "','" + "dns1." + domainName + "'"
-
-
 	query := "SELECT id, domain_id, name, type, content, ttl FROM records " +
-		"WHERE type = 'A' AND domain_id = ? AND  name NOT IN (" + dnsContent + ")"
+		"WHERE type = 'A' AND domain_id = ? AND name NOT IN (?, ?)"
 
-	if g.Config().Debug {
-		g.Logger.Debug("GetARecordsByDomainIDv2() sql %s", query )
-	}
-
-	rows, err := DB.Query(query, domainID)
+	rows, err := DB.Query(query, domainID, "dns0."+domainName, "dns1."+domainName)
 
 	if err != nil {
 		g.Logger.Errorf("GetARecordsByDomainIDv2() domainID %d error:%s", domainID, err)
@@ -356,68 +349,63 @@ func GetRecordsByHostName(hostName string) (records []*Record, err error) {
 
 
 
+// UpdateSOA 递增指定域名的 SOA serial。
+// 修复:
+//  1. SELECT ... FOR UPDATE 行锁: 原实现普通 SELECT 读 serial 后在 Go 里 +1 写回,
+//     并发事务读到同一 serial 会双双写 N+1 (lost update), serial 不前进
+//     将导致 slave 不触发 AXFR 同步;
+//  2. serial 溢出分支原返回 nil error (静默"成功"但不更新), 现在返回明确错误。
 func UpdateSOA(tx *sql.Tx, domainName string) (err error) {
 
 	query := `SELECT id, domain_id, name, type, content, ttl 
-              FROM records WHERE type ='SOA' and name = ?`
+              FROM records WHERE type = 'SOA' AND name = ? FOR UPDATE`
 
 	var record Record
 
 	err = tx.QueryRow(query, domainName).Scan(
-		&record.ID,
-		&record.DomainID,
-		&record.Name,
-		&record.Type,
-		&record.Content,
-		&record.TTL,
+		&record.ID, &record.DomainID, &record.Name,
+		&record.Type, &record.Content, &record.TTL,
 	)
-
 	if err != nil {
 		g.Logger.Errorf("UpdateSOA() get %s soa record error:%s", domainName, err)
 		return err
 	}
 
 	content := compressSpaces(record.Content)
+	cSp := strings.Split(content, " ")
 
-	c_sp := strings.Split(content, " ")
-
-	if len(c_sp) < 7 {
-		err := fmt.Errorf("soa content format invalid, split len < 7")
-		g.Logger.Errorf("UpdateSOA() %s: %v", domainName, err)
+	if len(cSp) < 7 {
+		err := fmt.Errorf("UpdateSOA() %s: soa content format invalid, split len < 7", domainName)
+		g.Logger.Error(err)
 		return err
 	}
 
-	numStr := c_sp[2]
-	num, err := strconv.Atoi(numStr)
+	num, err := strconv.Atoi(cSp[2])
 	if err != nil {
-		g.Logger.Errorf("UpdateSOA() SOA format parse num error: %s", err)
+		g.Logger.Errorf("UpdateSOA() %s: SOA serial parse error: %s", domainName, err)
 		return err
 	}
 
-	if num >= 9223372036854775806 {
-		g.Logger.Errorf("UpdateSOA() SOA number match MaxInt Value")
+	if num >= math.MaxInt64-1 {
+		err := fmt.Errorf("UpdateSOA() %s: SOA serial %d exceeds max value", domainName, num)
+		g.Logger.Error(err)
 		return err
 	}
 
 	num += 1
-	newNumStr := strconv.Itoa(num)
 
 	newCont := fmt.Sprintf("%s %s %s %s %s %s %s",
-		c_sp[0], c_sp[1], newNumStr, c_sp[3], c_sp[4], c_sp[5], c_sp[6])
+		cSp[0], cSp[1], strconv.Itoa(num), cSp[3], cSp[4], cSp[5], cSp[6])
 
 	record.Content = newCont
 
-	_, err = UpdateRecord(tx, record)
-
-	if err != nil {
+	if _, err = UpdateRecord(tx, record); err != nil {
 		g.Logger.Errorf("UpdateSOA() update SOA error:%s", err)
 		return err
 	}
 
 	return nil
-
 }
-
 
 
 func UpdateRecord(tx *sql.Tx, record Record) (int64, error) {
@@ -790,4 +778,23 @@ func GetSOARecords() (records []*Record, err error) {
 	}
 
 	return records, nil
+}
+
+
+// dnsServerFilter 返回参数化的 dns_server 过滤子句 (修复字符串拼接 IN 列表)
+func dnsServerFilter() (clause string, args []interface{}) {
+	dnsIpList := g.Config().DnsServer
+	if len(dnsIpList) == 0 {
+		return "", nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(dnsIpList)), ",")
+	args = make([]interface{}, 0, len(dnsIpList))
+	for _, ip := range dnsIpList {
+		args = append(args, ip)
+	}
+
+	clause = "NOT ((name LIKE 'dns0.%' OR name LIKE 'dns1.%') AND content IN (" +
+		placeholders + "))"
+	return clause, args
 }
