@@ -22,7 +22,7 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	pathParts := strings.Split(urlPath, "/")
 
 	if len(pathParts) != 1 || pathParts[0] == "" {
-		msg := fmt.Errorf("hostModify() Error: path invalid")
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: path invalid")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -30,19 +30,19 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	hostID, err := strconv.Atoi(pathParts[0])
 
 	if err != nil {
-		msg := fmt.Errorf("hostModify() Error: path %s not valid number", pathParts[0])
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: path %s not valid number", pathParts[0])
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if r.ContentLength == 0 {
-		msg := fmt.Errorf("hostModify() Error: body is blank")
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: body is blank")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("hostModify() Error: body not json format")
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: body not json format")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -50,7 +50,7 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("hostModify() Error: body read error: %v", err)
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: body read error: %v", err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -59,7 +59,7 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("hostModify() Error: body json unmarshal error: %v", err)
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: body json unmarshal error: %v", err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -67,7 +67,7 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	TrimAllStrings(&hostDict)
 
 	if !isIPv4(hostDict.IP) {
-		msg := fmt.Errorf("hostModify() Error: %s not valid ipaddress", hostDict.IP)
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: %s not valid ipaddress", hostDict.IP)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -75,20 +75,20 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	hostInfo, err := dnsGetSingleHostByIDv2(hostID)
 
 	if err != nil {
-		msg := fmt.Errorf("hostModify() Error: %s", err)
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: %s", err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if hostInfo.Hostname != hostDict.Hostname {
-		msg := fmt.Errorf("hostModify() Error: hostname %s not match %s in db",
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: hostname %s not match %s in db",
 			hostDict.Hostname, hostInfo.Hostname)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if hostInfo.IP == hostDict.IP {
-		msg := fmt.Errorf("hostModify() Error: IP %s has not change", hostDict.IP)
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: IP %s has not change", hostDict.IP)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -103,16 +103,19 @@ func hostModify(r *http.Request) (v interface{}, err error) {
 	// 会猜错导致 UpdateSOA 失败; 现在按 domain_id 反查真实域名
 	domainInfo, err := db.GetDomainByID(hostInfo.DomainID)
 	if err != nil {
-		msg := fmt.Errorf("hostModify() Error: lookup domain (id=%d) failed: %w",
+		msg := fmt.Errorf("[v2-host-modify] hostModify() Error: lookup domain (id=%d) failed: %w",
 			hostInfo.DomainID, err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if err = updateRecordV2(updateInfo, domainInfo.Name); err != nil {
-		g.Logger.Errorf("hostModify() Error: updateRecordV2() error %s", err)
+		g.Logger.Errorf("[v2-host-modify] hostModify() Error: updateRecordV2() error %s", err)
 		return nil, err
 	}
+
+	g.Logger.Infof("[v2-host-modify] modify host id=%d hostname=%s ip %s -> %s success",
+		hostID, updateInfo.Name, hostInfo.IP, updateInfo.Content)
 
 	// 修复: 原实现直接返回内部 db.Record (无 json tag, 字段名与其他接口不一致),
 	// 现在统一返回 DNSHostv2

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/signmem/go-woody/db"
+	"github.com/signmem/go-woody/g"
 )
 
 func hostDelete(r *http.Request) (v interface{}, err error) {
@@ -97,8 +98,18 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 func dnsDeleteSingleHostByDomainIDv2(host DNSHostv2) (int64, error) {
 	domainInfo, err := db.GetDomainByID(host.DomainID)
 	if err != nil {
-		return 0, fmt.Errorf("lookup domain (id=%d) for host %s failed: %w",
+		return 0, fmt.Errorf("dnsDeleteSingleHostByDomainIDv2() lookup domain (id=%d) for host %s failed: %w",
 			host.DomainID, host.Hostname, err)
 	}
-	return db.DeleteRecordByID(host.ID, domainInfo.Name)
+
+	affected, err := db.DeleteRecordByID(host.ID, domainInfo.Name)
+	if err != nil {
+		g.Logger.Errorf("[v2-host-delete] delete host %s (id=%d) failed: %v", host.Hostname, host.ID, err)
+		return affected, err
+	}
+
+	g.Logger.Infof("[v2-host-delete] delete host %s (id=%d, ip=%s, domain=%s) success",
+		host.Hostname, host.ID, host.IP, domainInfo.Name)
+
+	return affected, nil
 }

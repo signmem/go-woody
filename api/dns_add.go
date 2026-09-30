@@ -24,14 +24,14 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	// 只处理 dns 增加功能
 
 	if r.ContentLength == 0 {
-		msg := fmt.Errorf("dnsAdd() Error: body is blank")
+		msg := fmt.Errorf("[v1-add] dnsAdd() Error: body is blank")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "Post data not valid, body is blank!"
 		return htmlMsg, msg
 	}
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("dnsAdd() Error: body not json format")
+		msg := fmt.Errorf("[v1-add] dnsAdd() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "dnsAdd() Post data not valid, body not json format!"
 		return htmlMsg, msg
@@ -44,7 +44,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsAdd() Error: body read error")
+		msg := fmt.Errorf("[v1-add] dnsAdd() Error: body read error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "Post data not valid, body read error!"
 		return htmlMsg, msg
@@ -55,7 +55,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsAdd() Error: body json unmarshal error")
+		msg := fmt.Errorf("[v1-add] dnsAdd() Error: body json unmarshal error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "Post data not valid, body json unmarshal format error!"
 		return htmlMsg, msg
@@ -64,7 +64,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	TrimAllStrings(&hostDict)
 
 	if len(hostDict.Hosts) == 0 {
-		msg := fmt.Errorf("dnsAdd() Error: HostCreate empty")
+		msg := fmt.Errorf("[v1-add] dnsAdd() Error: HostCreate empty")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "Post data not valid, HostCreate empty!"
 		return htmlMsg, msg
@@ -88,19 +88,19 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 		// 基础空值校验
 		if hostName == "" || ipaddr == "" {
-			g.Logger.Errorf("dnsAdd() Error: hostname or ip is empty")
+			g.Logger.Errorf("[v1-add] dnsAdd() Error: hostname or ip is empty")
 			falseAdd += 1
 			continue
 		}
 
 		if !isIPv4(ipaddr) {
-			g.Logger.Errorf("dnsAdd() Error: %s not valid ipaddress", ipaddr)
+			g.Logger.Errorf("[v1-add] dnsAdd() Error: %s not valid ipaddress", ipaddr)
 			falseAdd += 1
 			continue
 		}
 
 		if !db.IsValidHostname(hostName) {
-			g.Logger.Errorf("dnsAdd() Error: %s not valid hostname", hostName)
+			g.Logger.Errorf("[v1-add] dnsAdd() Error: %s not valid hostname", hostName)
 			falseAdd += 1
 			continue
 		}
@@ -108,7 +108,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		dnsRecords, err := db.GetRecordsByHostName(hostName)
 
 		if err != nil {
-			g.Logger.Errorf("dnsAdd() get host %s records query err: %v", hostName, err)
+			g.Logger.Errorf("[v1-add] dnsAdd() get host %s records query err: %v", hostName, err)
 			falseAdd += 1
 			continue
 		}
@@ -155,7 +155,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	// 修复: 失败时明确返回"部分成功"信息 (已入库数量 + zone 同步失败原因),
 	// 便于运维补偿, 不再丢失已提交的成功计数
 	if zoneErr := appendZoneForwards(addedHosts); zoneErr != nil {
-		g.Logger.Errorf("dnsAdd() sync named zone failed: %v", zoneErr)
+		g.Logger.Errorf("[v1-add] dnsAdd() sync named zone failed: %v", zoneErr)
 		htmlMsg.Msg = fmt.Sprintf("%s (WARNING: %d hosts saved to DB, "+
 			"but named zone sync failed: %v)", addStatus.String(), successAdd, zoneErr)
 		return htmlMsg, zoneErr
@@ -170,7 +170,7 @@ func addSingleHost(host HostParams) (err error) {
 	ipaddr := strings.TrimSpace(host.IP)
 
 	if db.DB == nil {
-		g.Logger.Error("Database connection is nil - check if initDB() was called")
+		g.Logger.Error("[v1-add] addSingleHost() Database connection is nil - check if initDB() was called")
 		return fmt.Errorf("database connection is not initialized")
 	}
 
@@ -184,7 +184,7 @@ func addSingleHost(host HostParams) (err error) {
 		if rollbackNeeded {
 			// 只有失败才回滚
 			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				g.Logger.Errorf("addSingleHost() rollback error: %v", rollbackErr)
+				g.Logger.Errorf("[v1-add] addSingleHost() rollback error: %v", rollbackErr)
 			}
 		}
 	}()

@@ -12,7 +12,7 @@ import (
 func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("domainSOAFlush() Error: body not json format")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: body not json format")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -24,7 +24,7 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("domainSOAFlush() Error: body read error")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: body read error")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -33,7 +33,7 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 	err = json.Unmarshal(body, &domainInfo)
 
 	if err != nil {
-		msg := fmt.Errorf("domainSOAFlush() json format error.")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() json format error.")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -41,7 +41,7 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 	TrimAllStrings(&domainInfo)
 
 	if domainInfo.DomainID == 0 && domainInfo.DomainName == "" {
-		msg := fmt.Errorf("domainSOAFlush() Error: domain_id and domain_name is None")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: domain_id and domain_name is None")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -52,7 +52,7 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 		domain, err = db.GetDomainByID(domainInfo.DomainID)
 
 		if err != nil {
-			msg := fmt.Errorf("domainSOAFlush() get soa err:%s", err)
+			msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() get soa err:%s", err)
 			g.Logger.Error(msg)
 			return nil, msg
 		}
@@ -61,21 +61,21 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 	if domainInfo.DomainID == 0 && domainInfo.DomainName != "" {
 		domain, err = db.GetDomainsByName(domainInfo.DomainName)
 		if err != nil {
-			msg := fmt.Errorf("domainSOAFlush() get soa err:%s", err)
+			msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() get soa err:%s", err)
 			g.Logger.Error(msg)
 			return nil, msg
 		}
 	}
 
 	if domain == nil || domain.ID < 1 {
-		msg := fmt.Errorf("domainSOAFlush() get domain soa err:")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() get domain soa err:")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Errorf("domainSOAFlush() Error: failed to begin transaction")
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: failed to begin transaction")
 		g.Logger.Error(msg)
 		return nil, msg
 	}
@@ -90,13 +90,13 @@ func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 	err = db.UpdateSOA(tx, domain.Name)
 
 	if err != nil {
-		msg := fmt.Errorf("domainSOAFlush() Error: update soa err: %s", err)
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: update soa err: %s", err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Errorf("domainSOAFlush() Error: db commit error: %s", err)
+		msg := fmt.Errorf("[v2-domain-soa] domainSOAFlush() Error: db commit error: %s", err)
 		g.Logger.Error(msg)
 		return nil, msg
 	}

@@ -12,7 +12,7 @@ import (
 func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("syncSlaveDomain() Error: body not json format")
+		msg := fmt.Errorf("[v2-domain-add] syncSlaveDomain() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Post data not valid, body not json format!"
 		return htmlMsg, msg
@@ -25,7 +25,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("syncSlaveDomain() Error: body read error")
+		msg := fmt.Errorf("[v2-domain-add] syncSlaveDomain() Error: body read error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Post data not valid, body read error!"
 		return htmlMsg, msg
@@ -35,7 +35,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	err = json.Unmarshal(body, &syncStatus)
 
 	if err != nil {
-		msg := fmt.Errorf("syncSlaveDomain() Error: body json unmarshal error")
+		msg := fmt.Errorf("[v2-domain-add] syncSlaveDomain() Error: body json unmarshal error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Post data not valid, body json unmarshal format error!"
 		return htmlMsg, msg
@@ -44,7 +44,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	TrimAllStrings(&syncStatus)
 
 	if syncStatus.Sync == false {
-		msg := fmt.Errorf("syncSlaveDomain() Error: sync status is false")
+		msg := fmt.Errorf("[v2-domain-add] syncSlaveDomain() Error: sync status is false")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Error: sync status is false!"
 		return htmlMsg, msg
@@ -54,7 +54,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	masterDomain, err := db.GetAllPDNSDomain(domainType)
 
 	if err != nil {
-		msg := fmt.Errorf("syncSlaveDomain() get domain info err: %s", err)
+		msg := fmt.Errorf("[v2-domain-add] syncSlaveDomain() get domain info err: %s", err)
 		g.Logger.Error(msg)
 		htmlMsg.Msg = fmt.Sprintf("syncSlaveDomain() get domain info err:%s", err)
 		return htmlMsg, msg
@@ -98,7 +98,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		}()
 
 		if err != nil {
-			g.Logger.Errorf("sync domain %d failed: %v", domain.ID, err)
+			g.Logger.Errorf("[v2-domain-add] syncSlaveDomain() sync domain %d failed: %v", domain.ID, err)
 			failed++
 			continue
 		}

@@ -18,7 +18,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	// 只处理 host 增加功能
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("hostAdd() Error: body not json format")
+		msg := fmt.Errorf("[v2-host-add] hostAdd() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "hostAdd() Post data not valid, body not json format!"
 		return htmlMsg, msg
@@ -31,7 +31,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("hostAdd() Error: body read error")
+		msg := fmt.Errorf("[v2-host-add] hostAdd() Error: body read error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "hostAdd()  Post data not valid, body read error!"
 		return htmlMsg, msg
@@ -42,7 +42,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("hostAdd() Error: body json unmarshal error")
+		msg := fmt.Errorf("[v2-host-add] hostAdd() Error: body json unmarshal error")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "hostAdd() Post data not valid, body json unmarshal format error!"
 		return htmlMsg, msg
@@ -51,7 +51,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	TrimAllStrings(&hostDict)
 
 	if len(hostDict.Hosts) == 0 {
-		msg := fmt.Errorf("hostAdd() Error: HostCreate empty")
+		msg := fmt.Errorf("[v2-host-add] hostAdd() Error: HostCreate empty")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "hostAdd() Post data not valid, HostCreate empty!"
 		return htmlMsg, msg
@@ -61,7 +61,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	falseAdd := 0
 
 	if g.Config().Debug {
-		g.Logger.Debugf("hostAdd() add %s", hostDict.String())
+		g.Logger.Debugf("[v2-host-add] hostAdd() add %s", hostDict.String())
 	}
 
 	for _, host := range hostDict.Hosts {
@@ -71,19 +71,19 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 		// 基础空值校验
 		if hostName == "" || ipaddr == "" {
-			g.Logger.Errorf("hostAdd() Error: hostname or ip is empty")
+			g.Logger.Errorf("[v2-host-add] hostAdd() Error: hostname or ip is empty")
 			falseAdd += 1
 			continue
 		}
 
 		if !isIPv4(ipaddr) {
-			g.Logger.Errorf("hostAdd() Error: %s not valid ipaddress", ipaddr)
+			g.Logger.Errorf("[v2-host-add] hostAdd() Error: %s not valid ipaddress", ipaddr)
 			falseAdd += 1
 			continue
 		}
 
 		if !db.IsValidHostname(hostName) {
-			g.Logger.Errorf("hostAdd() Error: %s not valid hostname", hostName)
+			g.Logger.Errorf("[v2-host-add] hostAdd() Error: %s not valid hostname", hostName)
 			falseAdd += 1
 			continue
 		}
@@ -92,7 +92,7 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 		if err != nil {
 			// 修复: 原实现查询报错时静默 falseAdd, 不留任何日志
-			g.Logger.Errorf("hostAdd() get host %s records query err: %v", hostName, err)
+			g.Logger.Errorf("[v2-host-add] hostAdd() get host %s records query err: %v", hostName, err)
 			falseAdd += 1
 			continue
 		}
@@ -106,16 +106,16 @@ func hostAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		}
 
 		if ipExists {
-			g.Logger.Errorf("hostAdd() Error: %s records exists", hostName)
+			g.Logger.Errorf("[v2-host-add] hostAdd() Error: %s records exists", hostName)
 			falseAdd += 1
 			continue
 		}
 
 		if err = addDomainHost(host); err != nil {
 			if errors.Is(err, errRecordExists) || isMySQLDuplicate(err) {
-				g.Logger.Errorf("hostAdd() Error: %s records exists (concurrent insert)", hostName)
+				g.Logger.Errorf("[v2-host-add] hostAdd() Error: %s records exists (concurrent insert)", hostName)
 			} else {
-				g.Logger.Error(err)
+				g.Logger.Errorf("[v2-host-add] hostAdd() add host %s error: %s", hostName, err)
 			}
 			falseAdd += 1
 			continue
@@ -156,13 +156,13 @@ func addDomainHost(host HostParams) (err error) {
 	g.Logger.Debugf("[v2-host-add] add host:%s  ip:%s", hostName, ipaddr)
 
 	if db.DB == nil {
-		g.Logger.Error("Database connection is nil - check if initDB() was called")
+		g.Logger.Error("[v2-host-add] addDomainHost() Database connection is nil - check if initDB() was called")
 		return fmt.Errorf("database connection is not initialized")
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		g.Logger.Errorf("addDomainHost() Error: failed to begin transaction %s", err)
+		g.Logger.Errorf("[v2-host-add] addDomainHost() Error: failed to begin transaction %s", err)
 		return fmt.Errorf("addDomainHost() begin tx failed: %w", err)
 	}
 
@@ -172,7 +172,7 @@ func addDomainHost(host HostParams) (err error) {
 		if rollbackNeeded {
 			// 只有失败才回滚
 			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				g.Logger.Errorf("addDomainHost() rollback error: %v", rollbackErr)
+				g.Logger.Errorf("[v2-host-add] addDomainHost() rollback error: %v", rollbackErr)
 			}
 		}
 	}()

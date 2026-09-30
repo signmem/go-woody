@@ -21,7 +21,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	pathParts := strings.Split(urlPath, "/")
 
 	if len(pathParts) != 1 || pathParts[0] == "" {
-		msg := fmt.Errorf("domainDelete() Error: path error")
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: path error")
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
@@ -33,7 +33,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	domainDetail, err := db.GetDomainsByName(domainName)
 
 	if err != nil || domainDetail == nil || domainDetail.ID == 0 {
-		msg := fmt.Errorf("domainDelete() Error: domain %s not found in DB", domainName)
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: domain %s not found in DB", domainName)
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
@@ -46,7 +46,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Errorf("domainDelete() Error: failed to begin transaction: %w", err)
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: failed to begin transaction: %w", err)
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
@@ -55,7 +55,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	defer func() {
 		if rollbackNeeded {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				g.Logger.Errorf("domainDelete() transaction rollback error: %v", rollbackErr)
+				g.Logger.Errorf("[v2-domain-delete] domainDelete() transaction rollback error: %v", rollbackErr)
 			}
 		}
 	}()
@@ -63,21 +63,21 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	// DeleteRecordByDomainID 同时删除 records 与 domains 表中的对应行
 	if _, err = db.DeleteRecordByDomainID(tx, domainDetail.ID); err != nil {
 		// 修复: 原错误信息 %d/%w 动词与参数不匹配且丢失底层 err
-		msg := fmt.Errorf("domainDelete() Error: domain id %d delete records failed: %w",
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: domain id %d delete records failed: %w",
 			domainDetail.ID, err)
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
 
 	if err = db.DeleteDomainMetaData(tx, domainDetail.ID); err != nil {
-		msg := fmt.Errorf("domainDelete() Error: domain id %d delete metadata failed: %w",
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: domain id %d delete metadata failed: %w",
 			domainDetail.ID, err)
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Errorf("domainDelete() Error: DB commit failed: %w", err)
+		msg := fmt.Errorf("[v2-domain-delete] domainDelete() Error: DB commit failed: %w", err)
 		g.Logger.Error(msg)
 		return domaininfo, msg
 	}
@@ -88,7 +88,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	// DB 已提交, 同步移除 named zone 条目 (互斥 + rndc reconfig);
 	// 条目不存在只记 warning, 不影响删除结果
 	if zoneErr := removeZoneForwards([]string{domainDetail.Name}); zoneErr != nil {
-		g.Logger.Errorf("domainDelete() remove zone entry for %s failed: %v",
+		g.Logger.Errorf("[v2-domain-delete] domainDelete() remove zone entry for %s failed: %v",
 			domainDetail.Name, zoneErr)
 		return domaininfo, fmt.Errorf("domain deleted from DB, but named zone sync failed: %w", zoneErr)
 	}

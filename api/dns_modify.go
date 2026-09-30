@@ -24,7 +24,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	pathParts := strings.Split(urlPath, "/")
 
 	if len(pathParts) != 1 || pathParts[0] == "" {
-		msg := fmt.Errorf("dnsModify() Error: path invalid")
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: path invalid")
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -32,19 +32,19 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	domainID, err := strconv.Atoi(pathParts[0])
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: path %s not valid number", pathParts[0])
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: path %s not valid number", pathParts[0])
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	if r.ContentLength == 0 {
-		msg := fmt.Errorf("dnsModify() Error: body is blank")
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: body is blank")
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	if !isContentTypeJson(r) {
-		msg := fmt.Errorf("dnsModify() Error: body not json format")
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: body not json format")
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -52,7 +52,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	body, err := io.ReadAll(r.Body)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: body read error: %v", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: body read error: %v", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -61,7 +61,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: body json unmarshal error: %v", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: body json unmarshal error: %v", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -69,14 +69,14 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	TrimAllStrings(&hostDict)
 
 	if !isIPv4(hostDict.IP) {
-		msg := fmt.Errorf("dnsModify() Error: %s not valid ipaddress", hostDict.IP)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: %s not valid ipaddress", hostDict.IP)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: failed to begin transaction: %w", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: failed to begin transaction: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -85,7 +85,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	defer func() {
 		if rollbackNeeded {
 			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-				g.Logger.Errorf("dnsModify() transaction rollback error: %v", rollbackErr)
+				g.Logger.Errorf("[v1-modify] dnsModify() transaction rollback error: %v", rollbackErr)
 			}
 		}
 	}()
@@ -103,7 +103,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	// GetHostRecordsCount 这里查询只验证 domain_id + name 不会校验 content
 	count, err := db.GetHostRecordsCount(dnsModify)
 	if err != nil {
-		g.Logger.Errorf("dnsModify() get host record count error: %v", err)
+		g.Logger.Errorf("[v1-modify] dnsModify() get host record count error: %v", err)
 		return record, err
 	}
 
@@ -117,7 +117,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	hostID, err := db.GetHostRecordsID(dnsModify)
 
 	if err != nil {
-		g.Logger.Errorf("dnsModify() get host record id error: %v", err)
+		g.Logger.Errorf("[v1-modify] dnsModify() get host record id error: %v", err)
 		return record, err
 	}
 
@@ -126,20 +126,20 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	dnsModify.Type = "A"
 
 	if _, err = db.UpdateRecord(tx, dnsModify); err != nil {
-		msg := fmt.Errorf("dnsModify() Error: update record error: %w", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: update record error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	// 这里传入 hostname 属于劫持模式 不需要导入完整 domain
 	if err = db.UpdateSOA(tx, dnsModify.Name); err != nil {
-		msg := fmt.Errorf("dnsModify() Error: update SOA error: %w", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: update SOA error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Errorf("dnsModify() Error: db commit error: %w", err)
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: db commit error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
