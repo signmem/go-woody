@@ -45,7 +45,7 @@ func dnsGet(r *http.Request) (v interface{}, err error) {
 			g.Logger.Error(err)
 			return nil, err
 		}
-		return dnsGetMultiHost( page, perPage)
+		return dnsGetMultiHost(page, perPage)
 	}
 
 	msg := fmt.Errorf("dnsGet() Error: params error.")
@@ -54,14 +54,14 @@ func dnsGet(r *http.Request) (v interface{}, err error) {
 	return nil, msg
 }
 
-
 func validatePaginationParams(params url.Values) (int, int, error) {
 	pageStr := params.Get("page")
 	page := 1
 	if pageStr != "" {
 		pageNum, err := strconv.Atoi(pageStr)
 		if err != nil || pageNum < 1 {
-			return 0, 0, strconv.ErrSyntax
+			// 修复: 原实现返回裸 strconv.ErrSyntax, 客户端只能看到 "invalid syntax"
+			return 0, 0, fmt.Errorf("invalid page parameter: %q (must be integer >= 1)", pageStr)
 		}
 		page = pageNum
 	}
@@ -72,7 +72,7 @@ func validatePaginationParams(params url.Values) (int, int, error) {
 		perPageNum, err := strconv.Atoi(perPageStr)
 
 		if err != nil || perPageNum < 1 {
-			return page, 0, strconv.ErrSyntax
+			return page, 0, fmt.Errorf("invalid per_page parameter: %q (must be integer >= 1)", perPageStr)
 		}
 
 		if perPageNum > 1000 {
@@ -84,13 +84,12 @@ func validatePaginationParams(params url.Values) (int, int, error) {
 
 	for key := range params {
 		if key != "page" && key != "per_page" {
-			return 0, 0, fmt.Errorf("not support %s", key)
+			return 0, 0, fmt.Errorf("unsupported query parameter: %q", key)
 		}
 	}
 
 	return page, perPage, nil
 }
-
 
 func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err error) {
 
@@ -114,9 +113,9 @@ func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err err
 
 	for _, record := range records {
 		var hostInfo DNSHost
-		hostInfo.ID        =  record.DomainID
-		hostInfo.IP        =  record.Content
-		hostInfo.Hostname  =  record.Name
+		hostInfo.ID = record.DomainID
+		hostInfo.IP = record.Content
+		hostInfo.Hostname = record.Name
 
 		dnsDBRecord.Hosts = append(dnsDBRecord.Hosts, hostInfo)
 	}
@@ -129,21 +128,18 @@ func dnsGetMultiHost(m_page int, m_per_page int) (dnsDBRecord DNSRecord, err err
 
 }
 
-
-
 func dnsGetSingleHost(domain_id int) (dnshost DNSHost, err error) {
 
 	dnsARecord, err := db.GetARecordsByDomainID(domain_id)
 
 	if err != nil {
 		g.Logger.Errorf("domain id: %d, error: %s", domain_id, err)
-		return dnshost, fmt.Errorf("Host id %d not found.", domain_id )
+		return dnshost, fmt.Errorf("Host id %d not found.", domain_id)
 	}
 
-	dnshost.ID       = dnsARecord.DomainID
+	dnshost.ID = dnsARecord.DomainID
 	dnshost.Hostname = dnsARecord.Name
-	dnshost.IP       = dnsARecord.Content
+	dnshost.IP = dnsARecord.Content
 
 	return dnshost, nil
 }
-

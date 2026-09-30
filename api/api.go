@@ -101,7 +101,7 @@ func handleHostsDelete(w http.ResponseWriter, r *http.Request) {
 
 // isContentTypeJson 校验请求是否为 JSON
 func isContentTypeJson(r *http.Request) bool {
-	ct := r.Header.Get("Content‑Type")
+	ct := r.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(ct)
 	if err != nil {
 		return false

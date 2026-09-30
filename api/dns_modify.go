@@ -2,15 +2,16 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/signmem/go-woody/db"
-	"github.com/signmem/go-woody/g"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
-	"encoding/json"
-	"mime"
+
+	"github.com/signmem/go-woody/db"
+	"github.com/signmem/go-woody/g"
 )
 
 func dnsModify(r *http.Request) (record DNSHost, err error) {
@@ -19,35 +20,33 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 		_ = r.Body.Close()
 	}()
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
-	pathParts := strings.Split(path, "/")
+	urlPath := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
+	pathParts := strings.Split(urlPath, "/")
 
 	if len(pathParts) != 1 || pathParts[0] == "" {
-		msg := fmt.Errorf("Error: path invalid")
+		msg := fmt.Errorf("dnsModify() Error: path invalid")
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
-	domain_id, err :=  strconv.Atoi(pathParts[0])
+	domainID, err := strconv.Atoi(pathParts[0])
 
 	if err != nil {
-		msg := fmt.Errorf("Error: path %s not valid number.", pathParts[0])
+		msg := fmt.Errorf("dnsModify() Error: path %s not valid number", pathParts[0])
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	if r.ContentLength == 0 {
-		msg := fmt.Errorf("Error: body is blank")
+		msg := fmt.Errorf("dnsModify() Error: body is blank")
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
-	headerContentType := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(headerContentType)
-	if err != nil || mediaType != "application/json" {
-	    msg := fmt.Errorf("Error: body not json format")
-	    g.Logger.Error(msg)
-	    return record, msg
+	if !isContentTypeJson(r) {
+		msg := fmt.Errorf("dnsModify() Error: body not json format")
+		g.Logger.Error(msg)
+		return record, msg
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -62,22 +61,22 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	err = json.Unmarshal(body, &hostDict)
 
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: body json unmarshal error")
+		msg := fmt.Errorf("dnsModify() Error: body json unmarshal error: %v", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	TrimAllStrings(&hostDict)
 
-	if isIPv4(hostDict.IP) == false {
-		msg := fmt.Errorf("Error: %s not valid ipaddress", hostDict.IP)
+	if !isIPv4(hostDict.IP) {
+		msg := fmt.Errorf("dnsModify() Error: %s not valid ipaddress", hostDict.IP)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Errorf("dnsModify() Error: failed to begin transaction")
+		msg := fmt.Errorf("dnsModify() Error: failed to begin transaction: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -85,33 +84,32 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	rollbackNeeded := true
 	defer func() {
 		if rollbackNeeded {
-			if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-				msg := fmt.Sprintf("dnsModify() Error: transaction rollback error")
-				g.Logger.Errorf(msg)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				g.Logger.Errorf("dnsModify() transaction rollback error: %v", rollbackErr)
 			}
 		}
 	}()
 
 	var dnsModify db.Record
 
-	dnsModify.DomainID  = int64(domain_id)
-	dnsModify.Name      = strings.TrimSpace(hostDict.Hostname)
-	dnsModify.Content   = strings.TrimSpace(hostDict.IP)
+	dnsModify.DomainID = int64(domainID)
+	dnsModify.Name = strings.TrimSpace(hostDict.Hostname)
+	dnsModify.Content = strings.TrimSpace(hostDict.IP)
 
-	if dnsModify.Name == "" || dnsModify.Content  == "" {
+	if dnsModify.Name == "" || dnsModify.Content == "" {
 		return record, fmt.Errorf("hostname or ip can not be empty")
 	}
 
-	// GetHostRecordsCount 这里查询只验证 domain_id + name 不会校验 content 
-	count, err :=  db.GetHostRecordsCount(dnsModify)
+	// GetHostRecordsCount 这里查询只验证 domain_id + name 不会校验 content
+	count, err := db.GetHostRecordsCount(dnsModify)
 	if err != nil {
 		g.Logger.Errorf("dnsModify() get host record count error: %v", err)
 		return record, err
 	}
 
 	if count != 1 {
-		msg := fmt.Errorf("Error: id: %d, hostname: %s, " +
-			"not found in DB", domain_id,  hostDict.Hostname)
+		msg := fmt.Errorf("dnsModify() Error: id: %d, hostname: %s, not found in DB",
+			domainID, hostDict.Hostname)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -127,43 +125,37 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	dnsModify.TTL = 30
 	dnsModify.Type = "A"
 
-	_, err = db.UpdateRecord(tx, dnsModify)
-	if err != nil {
-		msg := fmt.Errorf("Error: update record error: %s", err)
+	if _, err = db.UpdateRecord(tx, dnsModify); err != nil {
+		msg := fmt.Errorf("dnsModify() Error: update record error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
-	// 这里导入 hostname 属于劫持模式 不需要导入完整 domain
-	err = db.UpdateSOA(tx, dnsModify.Name)
-	if err != nil {
-		msg := fmt.Errorf("Error: update SOA error: %s", err)
+	// 这里传入 hostname 属于劫持模式 不需要导入完整 domain
+	if err = db.UpdateSOA(tx, dnsModify.Name); err != nil {
+		msg := fmt.Errorf("dnsModify() Error: update SOA error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Errorf("Error: db commit error: %s", err)
+		msg := fmt.Errorf("dnsModify() Error: db commit error: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
 	rollbackNeeded = false
 
-	msg := fmt.Sprintf("Update id: %d hostname: %s " +
-		" ipaddr: %s success.", dnsModify.DomainID, dnsModify.Name, dnsModify.Content)
+	g.Logger.Infof("dnsModify() update id: %d hostname: %s ipaddr: %s success",
+		dnsModify.DomainID, dnsModify.Name, dnsModify.Content)
 
-	if g.Config().Debug == true {
-		g.Logger.Debug(msg)
-	}
-
-	dnsARecord , err := db.GetARecordsByDomainID(domain_id)
+	dnsARecord, err := db.GetARecordsByDomainID(domainID)
 	if err != nil {
 		return record, err
 	}
 
-	record.IP       = dnsARecord.Content
+	record.IP = dnsARecord.Content
 	record.Hostname = dnsARecord.Name
-	record.ID       = dnsARecord.DomainID
+	record.ID = dnsARecord.DomainID
 
 	return record, nil
 }

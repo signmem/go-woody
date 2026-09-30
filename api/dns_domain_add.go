@@ -2,34 +2,22 @@ package api
 
 import (
 	"database/sql"
-	"fmt"
-	"github.com/signmem/go-woody/tools"
-	"io"
-	"mime"
-	"net/http"
-	"github.com/signmem/go-woody/g"
-	"github.com/signmem/go-woody/db"
 	"encoding/json"
-	_ "errors"
-	"os"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"strings"
+
+	"github.com/signmem/go-woody/db"
+	"github.com/signmem/go-woody/g"
 )
 
 func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
-	// 只处理 dns 增加功能
+	// 只处理 dns 域名增加功能
 
-	//	if r.ContentLength == 0 {
-	//		msg := fmt.Errorf("domainAdd() Error: body is blank")
-	//		g.Logger.Error(msg)
-	//		htmlMsg.Msg = "domainAdd() Post data not valid, body is blank!"
-	//		return htmlMsg, msg
-	//	}
-
-
-	headerContentType := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(headerContentType)
-	if err != nil || mediaType != "application/json" {
+	if !isContentTypeJson(r) {
 		msg := fmt.Errorf("domainAdd() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "domainAdd() Post data not valid, body not json format!"
@@ -62,9 +50,7 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	TrimAllStrings(&DomainList)
 
-	DomainList.Master = strings.TrimSpace(DomainList.Master)
-
-	if len(DomainList.Domains)  == 0 {
+	if len(DomainList.Domains) == 0 {
 		msg := fmt.Errorf("domainAdd() Error: DomainList empty")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "domainAdd() Post data not valid, DomainList empty!"
@@ -74,31 +60,33 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	successAdd := 0
 	falseAdd := 0
 
-	if g.Config().Debug == true {
-		g.Logger.Debugf("domainAdd() add %s  ", DomainList.String())
+	// 修复: zone 条目统一收集, DB 提交后一次性加锁追加 + rndc reconfig
+	addedDomains := make([]string, 0)
+
+	if g.Config().Debug {
+		g.Logger.Debugf("domainAdd() add %s", DomainList.String())
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Sprintf("domainAdd() Error: failed to begin transaction: %w", err)
+		// 修复: 原实现用 fmt.Sprintf("...: %w", err), Sprintf 不支持 %w
+		msg := fmt.Errorf("domainAdd() Error: failed to begin transaction: %w", err)
 		g.Logger.Error(msg)
-		htmlMsg.Msg = msg
+		htmlMsg.Msg = msg.Error()
 		return htmlMsg, err
 	}
 
 	rollbackNeeded := true
 	defer func() {
 		if rollbackNeeded {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
-				g.Logger.Errorf("addSingleHost() rollback error: %v", rollbackErr)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				g.Logger.Errorf("domainAdd() rollback error: %v", rollbackErr)
 			}
 		}
 	}()
 
-	zoneFile := g.Config().ZoneFile
-	defaultDns := g.Config().DNS
-
-	var zoneBuf strings.Builder
+	// master 单独取副本, 避免所有 SLAVE 行共享同一指针
+	masterAddr := strings.TrimSpace(DomainList.Master)
 
 	for _, domain := range DomainList.Domains {
 
@@ -111,7 +99,7 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 			continue
 		}
 
-		if db.IsValidDomain(domain) == false {
+		if !db.IsValidDomain(domain) {
 			g.Logger.Errorf("domainAdd() Error: %s not valid domain", domain)
 			falseAdd += 1
 			continue
@@ -119,7 +107,7 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 		subDomainLevel := db.GetDomainReverseLevels(domain)
 
-		if ! g.Config().AutoParent {
+		if !g.Config().AutoParent {
 			subDomainLevel = []string{domain}
 		}
 
@@ -131,104 +119,58 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 			domainDBInfo, err := db.GetDomainsByName(subDomain)
 
-			if err != nil &&  err != sql.ErrNoRows{
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				g.Logger.Errorf("domainAdd() %s db query err: %s", subDomain, err)
 				falseAdd += 1
 				continue
 			}
 
 			if domainDBInfo != nil {
-				g.Logger.Errorf("domainAdd() %s in db ready", subDomain)
+				g.Logger.Infof("domainAdd() %s already in db, skip", subDomain)
 				falseAdd += 1
 				continue
 			}
 
 			var domainDB db.Domain
-			if DomainList.Master == "" {
-
+			if masterAddr == "" {
 				domainDB.Type = "MASTER"
 				domainDB.Name = subDomain
 				domainDB.Master = nil
-
 			} else {
-
 				domainDB.Type = "SLAVE"
 				domainDB.Name = subDomain
-				domainDB.Master = &DomainList.Master
-
+				domainDB.Master = &masterAddr
 			}
 
-			domain_id, err := db.InsertDomain(tx, domainDB)
+			domainID, err := db.InsertDomain(tx, domainDB)
 
-			if err != nil || domain_id == 0 {
-				msg := fmt.Sprintf("domainAdd() Error: InsertDomain error %s", err)
-				g.Logger.Error(msg)
+			if err != nil || domainID == 0 {
+				g.Logger.Errorf("domainAdd() Error: InsertDomain %s error: %v", subDomain, err)
 				falseAdd += 1
 				continue
 			}
 
 			if domainDB.Type == "MASTER" {
-				_, _, err = DomainMetaDataAdd(tx, domain_id)
-
-				if err != nil {
-					msg := fmt.Sprintf("metadataba fail with domain %s", subDomain)
-					g.Logger.Error(msg)
+				if _, _, err = DomainMetaDataAdd(tx, domainID); err != nil {
+					g.Logger.Errorf("domainAdd() metadata fail with domain %s: %v", subDomain, err)
 					falseAdd += 1
 					continue
 				}
 			}
 
-			if g.Config().Named == true {
-
-				forwaroders := fmt.Sprintf("zone \"%s\" IN { type forward; forwarders " +
-					"{ %s port %s; }; };\n", subDomain, defaultDns.IP, defaultDns.Port)
-				zoneBuf.WriteString(forwaroders)
-
-			}
-
+			addedDomains = append(addedDomains, subDomain)
 			successAdd += 1
-
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
-		msg := fmt.Sprintf("domainAdd() Error: commit failed: %v", err)
+		msg := fmt.Errorf("domainAdd() Error: commit failed: %w", err)
 		g.Logger.Error(msg)
-		htmlMsg.Msg = msg
+		htmlMsg.Msg = msg.Error()
 		return htmlMsg, err
 	}
 
-        rollbackNeeded = false
-
-	if zoneBuf.Len() > 0 && g.Config().Named == true {
-		f, err := os.OpenFile(zoneFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			msg := fmt.Sprintf("zone file %s open fail", zoneFile)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
-		}
-
-		_, err = f.WriteString(zoneBuf.String())
-		_ = f.Close()
-
-		if err != nil {
-			msg := fmt.Sprintf("zone file %s write fail", zoneFile)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
-		}
-
-
-		err = tools.RestartNamed()
-		if err != nil {
-			msg := fmt.Sprintf("domainAdd() Error: restart named %s", err)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
-		}
-
-	}
+	rollbackNeeded = false
 
 	var addStatus DnsAddStatus
 	addStatus.Success = successAdd
@@ -236,60 +178,61 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	htmlMsg.Msg = addStatus.String()
 
+	// DB 已提交, 同步 named zone; 失败时返回明确的"部分成功"信息
+	if zoneErr := appendZoneForwards(addedDomains); zoneErr != nil {
+		g.Logger.Errorf("domainAdd() sync named zone failed: %v", zoneErr)
+		htmlMsg.Msg = fmt.Sprintf("%s (WARNING: %d domains saved to DB, "+
+			"but named zone sync failed: %v)", addStatus.String(), successAdd, zoneErr)
+		return htmlMsg, zoneErr
+	}
+
 	return htmlMsg, nil
 }
 
-
-func DomainMetaDataAdd(tx *sql.Tx, domain_id int64) (success int, false int, err error) {
+// DomainMetaDataAdd 为 MASTER 域名批量写入 AXFR/NOTIFY 元数据。
+// 修复: 命名返回值 false 遮蔽内建标识符, 重命名为 succeeded/failed;
+// INSERT IGNORE 命中已有记录时计入 failed (skip), 与原语义一致。
+func DomainMetaDataAdd(tx *sql.Tx, domainID int64) (succeeded int, failed int, err error) {
 
 	var domainDBMeta db.DomainMeta
-	domainDBMeta.DomainID  = domain_id
+	domainDBMeta.DomainID = domainID
 
-	dns_server := g.Config().DnsServer
+	dnsServers := g.Config().DnsServer
+	pdnsPort := g.Config().DNS.Port
 
-	for _, server := range dns_server {
-		domainDBMeta.Content = server
-		domainDBMeta.Kind = "ALLOW-AXFR-IPS"
+	insert := func(kind, content string) error {
+		domainDBMeta.Kind = kind
+		domainDBMeta.Content = content
 
-		idb, err := db.InsertDomainMetaData(tx, domainDBMeta)
+		affected, err := db.InsertDomainMetaData(tx, domainDBMeta)
 		if err != nil {
-			return success, false, err
+			return err
 		}
 
-		if idb == 1 {
-			success +=1
+		if affected == 1 {
+			succeeded++
 		} else {
-			false += 1
+			// INSERT IGNORE 命中已有记录, 视为 skip
+			failed++
+		}
+		return nil
+	}
+
+	for _, server := range dnsServers {
+		if err := insert("ALLOW-AXFR-IPS", server); err != nil {
+			return succeeded, failed, err
 		}
 
-		remoteContent := server + ":" + g.Config().DNS.Port
-		domainDBMeta.Content = remoteContent
-		domainDBMeta.Kind    = "ALLOW-AXFR-FROM"
+		remoteContent := server + ":" + pdnsPort
 
-		idc, err := db.InsertDomainMetaData(tx, domainDBMeta)
-		if err != nil {
-			return success, false, err
+		if err := insert("ALLOW-AXFR-FROM", remoteContent); err != nil {
+			return succeeded, failed, err
 		}
 
-		if idc == 1 {
-			success +=1
-		} else {
-			false += 1
-		}
-
-		domainDBMeta.Kind    = "ALSO-NOTIFY"
-		idd, err := db.InsertDomainMetaData(tx, domainDBMeta)
-		if err != nil {
-			return success, false, err
-		}
-
-		if idd == 1 {
-			success +=1
-		} else {
-			false += 1
+		if err := insert("ALSO-NOTIFY", remoteContent); err != nil {
+			return succeeded, failed, err
 		}
 	}
 
-
-	return success, false, nil
+	return succeeded, failed, nil
 }

@@ -2,17 +2,22 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
+
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
-	"github.com/signmem/go-woody/tools"
-	"io"
-	"mime"
-	"net/http"
-	"encoding/json"
-	"os"
-	"strings"
 )
+
+// 说明: 为彻底消除"先查重后插入"的并发窗口 (TOCTOU), 建议在 MySQL 增加唯一索引:
+//
+//	ALTER TABLE records ADD UNIQUE KEY uk_records_name_type_content (name, type, content);
+//
+// 代码已兼容处理 1062 duplicate-key 错误, 加上索引后即为并发安全。
 
 func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
@@ -25,15 +30,12 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		return htmlMsg, msg
 	}
 
-	headerContentType := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(headerContentType)
-	if err != nil || mediaType != "application/json" {
+	if !isContentTypeJson(r) {
 		msg := fmt.Errorf("dnsAdd() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "dnsAdd() Post data not valid, body not json format!"
 		return htmlMsg, msg
 	}
-
 
 	defer func() {
 		_ = r.Body.Close()
@@ -61,7 +63,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	TrimAllStrings(&hostDict)
 
-	if len(hostDict.Hosts)  == 0 {
+	if len(hostDict.Hosts) == 0 {
 		msg := fmt.Errorf("dnsAdd() Error: HostCreate empty")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "Post data not valid, HostCreate empty!"
@@ -71,18 +73,18 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	successAdd := 0
 	falseAdd := 0
 
-	var zoneBuf strings.Builder
+	// 修复: zone 条目统一收集, 全部 DB 提交后一次性加锁追加 + rndc reconfig,
+	// 不再边加边写文件、每次请求 systemctl restart
+	addedHosts := make([]string, 0, len(hostDict.Hosts))
 
-	if g.Config().Debug == true {
+	if g.Config().Debug {
 		g.Logger.Debugf("dnsAdd() add %s", hostDict.String())
 	}
-
-	defaultDns := g.Config().DNS
 
 	for _, host := range hostDict.Hosts {
 
 		hostName := strings.TrimSpace(host.Hostname)
-		ipaddr   := strings.TrimSpace(host.IP)
+		ipaddr := strings.TrimSpace(host.IP)
 
 		// 基础空值校验
 		if hostName == "" || ipaddr == "" {
@@ -91,90 +93,56 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 			continue
 		}
 
-		if isIPv4(ipaddr) == false {
+		if !isIPv4(ipaddr) {
 			g.Logger.Errorf("dnsAdd() Error: %s not valid ipaddress", ipaddr)
 			falseAdd += 1
 			continue
 		}
 
-		if db.IsValidHostname(hostName) == false {
-			g.Logger.Errorf("dnsAdd() Error: %s not valid hostname",  hostName)
+		if !db.IsValidHostname(hostName) {
+			g.Logger.Errorf("dnsAdd() Error: %s not valid hostname", hostName)
 			falseAdd += 1
 			continue
 		}
 
-		dnsRecords, err :=  db.GetRecordsByHostName(hostName)
+		dnsRecords, err := db.GetRecordsByHostName(hostName)
+
+		if err != nil {
+			g.Logger.Errorf("dnsAdd() get host %s records query err: %v", hostName, err)
+			falseAdd += 1
+			continue
+		}
 
 		ipExists := false
-
-		if err == nil {
-
-			for _, dnsRecord := range dnsRecords  {
-
-				if dnsRecord.Content == ipaddr && dnsRecord.Name == hostName {
-					ipExists = true
-					g.Logger.Errorf("dnsAdd() Error: %s records exists", hostName)
-					break
-				}
+		for _, dnsRecord := range dnsRecords {
+			if dnsRecord.Content == ipaddr && dnsRecord.Name == hostName {
+				ipExists = true
+				break
 			}
-
-			if ipExists == true {
-				falseAdd += 1
-				continue
-			}
-		} else {
-			falseAdd += 1
-			g.Logger.Errorf("dnsAdd() get host %s records query err: %v", hostName, err)
-			continue
 		}
 
-		if err := addSingleHost(host) ; err != nil {
-			g.Logger.Errorf("dnsAdd() add host %s error: %s", host.Hostname, err)
+		if ipExists {
+			g.Logger.Errorf("dnsAdd() Error: %s records exists", hostName)
 			falseAdd += 1
 			continue
-		} else {
-			successAdd += 1
-			if g.Config().Debug == true {
-				g.Logger.Debugf("dnsAdd() Debug: add hostname %v", hostName)
+		}
+
+		if err := addSingleHost(host); err != nil {
+			if errors.Is(err, errRecordExists) || isMySQLDuplicate(err) {
+				g.Logger.Errorf("dnsAdd() Error: %s records exists (concurrent insert)", hostName)
+			} else {
+				g.Logger.Errorf("dnsAdd() add host %s error: %s", hostName, err)
 			}
-
-			if g.Config().Named == true {
-				forwaroders := fmt.Sprintf("zone \"%s\" IN { type forward; forwarders " +
-					"{ %s port %s; }; };\n", hostName, defaultDns.IP, defaultDns.Port)
-				zoneBuf.WriteString(forwaroders)
-			}
-		}
-	}
-
-	zoneFile := g.Config().ZoneFile
-
-	if zoneBuf.Len() > 0 && g.Config().Named == true {
-		f, err := os.OpenFile(zoneFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			msg := fmt.Sprintf("dnsAdd() zone file %s open fail", zoneFile)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
+			falseAdd += 1
+			continue
 		}
 
-		_, err = f.WriteString(zoneBuf.String())
-		_ = f.Close()
+		successAdd += 1
+		addedHosts = append(addedHosts, hostName)
 
-		if err != nil {
-			msg := fmt.Sprintf("dnsAdd() zone file %s write fail", zoneFile)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
+		if g.Config().Debug {
+			g.Logger.Debugf("dnsAdd() Debug: add hostname %v", hostName)
 		}
-
-		err = tools.RestartNamed()
-		if err != nil {
-			msg := fmt.Sprintf("dnsAdd() Error: restart named %s", err)
-			g.Logger.Error(msg)
-			htmlMsg.Msg = msg
-			return htmlMsg, err
-		}
-
 	}
 
 	var addStatus DnsAddStatus
@@ -183,14 +151,23 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	htmlMsg.Msg = addStatus.String()
 
+	// DB 已提交, 同步 named zone (内部互斥 + rndc reconfig)。
+	// 修复: 失败时明确返回"部分成功"信息 (已入库数量 + zone 同步失败原因),
+	// 便于运维补偿, 不再丢失已提交的成功计数
+	if zoneErr := appendZoneForwards(addedHosts); zoneErr != nil {
+		g.Logger.Errorf("dnsAdd() sync named zone failed: %v", zoneErr)
+		htmlMsg.Msg = fmt.Sprintf("%s (WARNING: %d hosts saved to DB, "+
+			"but named zone sync failed: %v)", addStatus.String(), successAdd, zoneErr)
+		return htmlMsg, zoneErr
+	}
+
 	return htmlMsg, nil
 }
 
-
 func addSingleHost(host HostParams) (err error) {
 
-	hostName := host.Hostname
-	ipaddr   := host.IP
+	hostName := strings.TrimSpace(host.Hostname)
+	ipaddr := strings.TrimSpace(host.IP)
 
 	if db.DB == nil {
 		g.Logger.Error("Database connection is nil - check if initDB() was called")
@@ -199,40 +176,39 @@ func addSingleHost(host HostParams) (err error) {
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		return fmt.Errorf("addSingleHost() Error: failed to begin transaction")
+		return fmt.Errorf("addSingleHost() Error: failed to begin transaction: %w", err)
 	}
 
 	rollbackNeeded := true
 	defer func() {
 		if rollbackNeeded {
 			// 只有失败才回滚
-			if rollbackErr := tx.Rollback(); rollbackErr != nil && rollbackErr != sql.ErrTxDone {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
 				g.Logger.Errorf("addSingleHost() rollback error: %v", rollbackErr)
 			}
 		}
 	}()
 
 	// 只对 pdns.domains 表添加域名信息
-	domain_id, err := dnsDomainAdd(tx, hostName)
+	domainID, err := dnsDomainAdd(tx, hostName)
 
 	if err != nil {
-		return fmt.Errorf("dnsAdd() Error: domain %s add error: %s", hostName, err)
+		return fmt.Errorf("addSingleHost() domain %s add error: %w", hostName, err)
 	}
 
-	_, err = dnsHostAdd(tx, domain_id, hostName, ipaddr)
-
-	if err != nil {
-		return fmt.Errorf("dns %s add error: %s", hostName, err)
+	if _, err = dnsHostAdd(tx, domainID, hostName, ipaddr); err != nil {
+		if isMySQLDuplicate(err) {
+			return fmt.Errorf("addSingleHost() host %s ip %s: %w", hostName, ipaddr, errRecordExists)
+		}
+		return fmt.Errorf("addSingleHost() dns %s add error: %w", hostName, err)
 	}
 
-	err = db.UpdateSOA(tx, hostName)
-
-	if err != nil {
-		return fmt.Errorf("dns %s update SOA error: %s", hostName, err)
+	if err = db.UpdateSOA(tx, hostName); err != nil {
+		return fmt.Errorf("addSingleHost() dns %s update SOA error: %w", hostName, err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("db commit error: %s", err)
+		return fmt.Errorf("addSingleHost() db commit error: %w", err)
 	}
 	rollbackNeeded = false
 

@@ -6,16 +6,12 @@ import (
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
 	"io"
-	"mime"
 	"net/http"
 )
 
 func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
-	headerContentType := r.Header.Get("Content-Type")
-
-	mediaType, _, err := mime.ParseMediaType(headerContentType)
-	if err != nil || mediaType != "application/json" {
+	if !isContentTypeJson(r) {
 		msg := fmt.Errorf("syncSlaveDomain() Error: body not json format")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Post data not valid, body not json format!"
@@ -47,7 +43,7 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 
 	TrimAllStrings(&syncStatus)
 
-	if syncStatus.Sync == false{
+	if syncStatus.Sync == false {
 		msg := fmt.Errorf("syncSlaveDomain() Error: sync status is false")
 		g.Logger.Error(msg)
 		htmlMsg.Msg = "syncSlaveDomain() Error: sync status is false!"
@@ -83,7 +79,6 @@ func syncSlaveDomain(r *http.Request) (htmlMsg ReturnMsg, err error) {
 					_ = tx.Rollback()
 				}
 			}()
-
 
 			sLoc, fLoc, err := DomainMetaDataAdd(tx, domainID)
 

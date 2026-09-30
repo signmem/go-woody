@@ -1,16 +1,15 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
-	"errors"
+
 	"github.com/signmem/go-woody/db"
 )
-
-
 
 func hostDelete(r *http.Request) (v interface{}, err error) {
 
@@ -24,7 +23,6 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 		}
 	}
 
-
 	// do delete from /api/v2/hosts/host_id/ID
 	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
 		segments[2] == "hosts" && segments[3] == "host_id" {
@@ -36,7 +34,7 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 			return nil, msg
 		}
 
-		dnshosts, err :=  dnsGetSingleHostByIDv2(idInt)
+		dnshosts, err := dnsGetSingleHostByIDv2(idInt)
 
 		if err != nil {
 			return nil, err
@@ -48,17 +46,16 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 			return nil, err
 		}
 
-		return  dnshosts, nil
-
+		return dnshosts, nil
 	}
 
 	// do delete from /api/v2/hosts/host_name/hostName
 	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
 		segments[2] == "hosts" && segments[3] == "host_name" {
 
-		hostname :=  strings.TrimSpace(segments[4])
-		if db.IsValidHostname(hostname) == false {
-			msg := fmt.Errorf("%s not valid hostname",  hostname)
+		hostname := strings.TrimSpace(segments[4])
+		if !db.IsValidHostname(hostname) {
+			msg := fmt.Errorf("%s not valid hostname", hostname)
 			return nil, msg
 		}
 
@@ -69,15 +66,15 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 		}
 
 		if len(dnsARecords) != 1 {
-			msg := fmt.Errorf("%s total count is %d  not unique data.", hostname, len(dnsARecords))
+			msg := fmt.Errorf("%s total count is %d not unique data", hostname, len(dnsARecords))
 			return nil, msg
 		}
 
 		var host DNSHostv2
-		host.ID        = dnsARecords[0].ID
-		host.Hostname  = dnsARecords[0].Name
-		host.DomainID  = dnsARecords[0].DomainID
-		host.IP        = dnsARecords[0].Content
+		host.ID = dnsARecords[0].ID
+		host.Hostname = dnsARecords[0].Name
+		host.DomainID = dnsARecords[0].DomainID
+		host.IP = dnsARecords[0].Content
 
 		_, err = dnsDeleteSingleHostByDomainIDv2(host)
 
@@ -85,8 +82,7 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 			return nil, err
 		}
 
-		return  host, nil
-
+		return host, nil
 	}
 
 	msg := fmt.Errorf("not valid parameters.")
@@ -94,9 +90,15 @@ func hostDelete(r *http.Request) (v interface{}, err error) {
 	return nil, msg
 }
 
+// dnsDeleteSingleHostByDomainIDv2 删除单条 host 记录并递增所属 domain 的 SOA serial。
+// 修复: 原实现用 GetParentDomain(hostname) 猜测域名, 当主机挂在更高层域名下时
+// (如 a.b.163.com 挂在 163.com) 会猜错, 导致 UpdateSOA 找不到 SOA 记录而删除失败;
+// 现在直接按记录的 domain_id 反查 domains 表取真实域名。
 func dnsDeleteSingleHostByDomainIDv2(host DNSHostv2) (int64, error) {
-	hostID := host.ID
-	hostName := host.Hostname
-	domainName := GetParentDomain(hostName)
-	return db.DeleteRecordByID(hostID, domainName)
+	domainInfo, err := db.GetDomainByID(host.DomainID)
+	if err != nil {
+		return 0, fmt.Errorf("lookup domain (id=%d) for host %s failed: %w",
+			host.DomainID, host.Hostname, err)
+	}
+	return db.DeleteRecordByID(host.ID, domainInfo.Name)
 }

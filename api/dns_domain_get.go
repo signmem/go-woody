@@ -3,15 +3,14 @@ package api
 import (
 	"fmt"
 	"github.com/signmem/go-woody/db"
+	"github.com/signmem/go-woody/g"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
-	"github.com/signmem/go-woody/g"
 )
 
 func domainGet(r *http.Request) (v interface{}, err error) {
-
 
 	cleanPath := path.Clean(r.URL.Path)
 	pathSegments := strings.Split(cleanPath, "/")
@@ -35,7 +34,6 @@ func domainGet(r *http.Request) (v interface{}, err error) {
 		return dnsGetSingleDomainID(int64(idInt))
 	}
 
-
 	if len(segments) == 3 && segments[0] == "api" && segments[1] == "v2" && segments[2] == "domains" {
 
 		queryParams := r.URL.Query()
@@ -45,7 +43,7 @@ func domainGet(r *http.Request) (v interface{}, err error) {
 			g.Logger.Error(err)
 			return nil, err
 		}
-		return dnsGetMultiDomain( page, perPage)
+		return dnsGetMultiDomain(page, perPage)
 	}
 
 	msg := fmt.Errorf("domainGet() Error: params error.")
@@ -54,14 +52,13 @@ func domainGet(r *http.Request) (v interface{}, err error) {
 	return nil, msg
 }
 
-func dnsGetSingleDomainID(domain_id int64) ( domainInfo *db.Domain, err error) {
-	return  db.GetDomainByID(domain_id)
+func dnsGetSingleDomainID(domain_id int64) (domainInfo *db.Domain, err error) {
+	return db.GetDomainByID(domain_id)
 }
 
 func dnsGetSingleDomainName(domain_name string) (domainInfo *db.Domain, err error) {
-	return  db.GetDomainsByName(domain_name)
+	return db.GetDomainsByName(domain_name)
 }
-
 
 func dnsGetMultiDomain(m_page int, m_per_page int) (dnsDBRecord DomainRecord, err error) {
 
@@ -85,10 +82,10 @@ func dnsGetMultiDomain(m_page int, m_per_page int) (dnsDBRecord DomainRecord, er
 
 	for _, record := range records {
 		var DomainInfo db.Domain
-		DomainInfo.ID      =  record.ID
-		DomainInfo.Name    =  record.Name
-		DomainInfo.Master  =  record.Master
-		DomainInfo.Type    =  record.Type
+		DomainInfo.ID = record.ID
+		DomainInfo.Name = record.Name
+		DomainInfo.Master = record.Master
+		DomainInfo.Type = record.Type
 
 		dnsDBRecord.Domains = append(dnsDBRecord.Domains, DomainInfo)
 	}

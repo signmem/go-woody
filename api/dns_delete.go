@@ -2,39 +2,38 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/signmem/go-woody/db"
-	"github.com/signmem/go-woody/g"
-	"github.com/signmem/go-woody/tools"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/signmem/go-woody/db"
+	"github.com/signmem/go-woody/g"
 )
 
-func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
+func dnsDelete(r *http.Request) (record DNSHost, err error) {
 
-	path := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
-	pathParts := strings.Split(path, "/")
+	urlPath := strings.TrimPrefix(r.URL.Path, "/api/hosts/")
+	pathParts := strings.Split(urlPath, "/")
 
 	if len(pathParts) != 1 || pathParts[0] == "" {
-		msg := fmt.Errorf("Error: path error")
+		msg := fmt.Errorf("dnsDelete() Error: path error")
 		g.Logger.Error(msg)
 		return record, msg
 	}
 
-	domain_id, err :=  strconv.Atoi(pathParts[0])
+	domainID, err := strconv.Atoi(pathParts[0])
 
 	if err != nil {
-
-		msg := fmt.Errorf("Error: path params not valid.")
+		msg := fmt.Errorf("dnsDelete() Error: path param %q not valid number", pathParts[0])
 		g.Logger.Error(msg)
 		return record, msg
-
 	}
 
 	tx, err := db.DB.Begin()
 	if err != nil {
-		msg := fmt.Errorf("Error: failed to begin transaction")
+		msg := fmt.Errorf("dnsDelete() Error: failed to begin transaction: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
 	}
@@ -42,71 +41,48 @@ func dnsDelete(r *http.Request)  (record DNSHost, err error)  {
 	rollbackNeeded := true
 	defer func() {
 		if rollbackNeeded {
-			if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-				msg := fmt.Sprintf("dnsDelete() Error: transaction rollback error")
-				g.Logger.Errorf(msg)
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				g.Logger.Errorf("dnsDelete() transaction rollback error: %v", rollbackErr)
 			}
 		}
 	}()
 
-	aRecord, err := db.GetARecordsByDomainID(domain_id)
+	aRecord, err := db.GetARecordsByDomainID(domainID)
 
-	if err != nil || aRecord.DomainID != int64(domain_id)  {
+	if err != nil || aRecord.DomainID != int64(domainID) {
 
-		msg := fmt.Errorf("Error: Host %s not found in DB.", pathParts[0])
+		msg := fmt.Errorf("dnsDelete() Error: host %s not found in DB", pathParts[0])
 		g.Logger.Error(msg)
 		return record, msg
-
 	}
 
-	_, err = db.DeleteRecordByDomainID(tx, int64(domain_id))
-
-	if err != nil {
-
-		msg := fmt.Errorf("Error: Host %d delete from DB.", pathParts[0])
+	// 修复: 原错误信息格式化动词错误 (%d 配 string / 无动词多参),
+	// 且丢失了底层 err; 现在统一 %w 包装
+	if _, err = db.DeleteRecordByDomainID(tx, int64(domainID)); err != nil {
+		msg := fmt.Errorf("dnsDelete() Error: host %s delete from DB failed: %w", pathParts[0], err)
 		g.Logger.Error(msg)
 		return record, msg
-
 	}
 
 	if err = tx.Commit(); err != nil {
-
-		msg := fmt.Errorf("Error: DB commit.", pathParts[0])
+		msg := fmt.Errorf("dnsDelete() Error: DB commit failed: %w", err)
 		g.Logger.Error(msg)
 		return record, msg
-
 	}
 	rollbackNeeded = false
 
-	msg := fmt.Sprintf("dnsDelete() delete hostname %s Success", aRecord.Name)
+	record.IP = aRecord.Content
+	record.Hostname = aRecord.Name
+	record.ID = aRecord.DomainID
 
-	if g.Config().Debug == true {
-		g.Logger.Debug(msg)
+	g.Logger.Infof("dnsDelete() delete hostname %s success", aRecord.Name)
+
+	// 修复: DB 已提交, zone 移除走互斥 + rndc reconfig;
+	// zone 条目不存在只记 warning, 不影响删除结果
+	if zoneErr := removeZoneForwards([]string{aRecord.Name}); zoneErr != nil {
+		g.Logger.Errorf("dnsDelete() remove zone entry for %s failed: %v", aRecord.Name, zoneErr)
+		return record, fmt.Errorf("host deleted from DB, but named zone sync failed: %w", zoneErr)
 	}
 
-	zoneFile := g.Config().ZoneFile
-	if g.Config().Named == true {
-
-		err = RemoveZoneFromFile(zoneFile,  aRecord.Name)
-		if err != nil {
-			msg := fmt.Errorf("Error: domainDelete() delete domain  %s file " +
-				"write error: %s",  aRecord.Name, err)
-			g.Logger.Error(msg)
-			// return domaininfo, msg
-		}
-
-		err = tools.RestartNamed()
-		if err != nil {
-			msg := fmt.Sprintf("domainDelete() Error: restart named %s", err)
-			g.Logger.Error(msg)
-			return record, err
-		}
-
-	}
-
-	record.IP        = aRecord.Content
-	record.Hostname  = aRecord.Name
-	record.ID        = aRecord.DomainID
 	return record, nil
 }
-

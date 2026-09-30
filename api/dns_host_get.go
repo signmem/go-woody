@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
@@ -8,7 +9,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"errors"
 )
 
 func hostGet(r *http.Request) (v interface{}, err error) {
@@ -37,7 +37,7 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 			return nil, fmt.Errorf("domain_id must greater than zero")
 		}
 
-		dnshosts, err :=  dnsGetSingleHostByDomainIDv2(idInt)
+		dnshosts, err := dnsGetSingleHostByDomainIDv2(idInt)
 
 		if err != nil {
 			return nil, err
@@ -65,7 +65,7 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 			return nil, errors.New("host_id must greater than zero")
 		}
 
-		return  dnsGetSingleHostByIDv2(idInt)
+		return dnsGetSingleHostByIDv2(idInt)
 	}
 
 	//  /api/v2/hosts/host_name/{hostname}
@@ -74,11 +74,11 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 		hostname := segments[4]
 
 		if db.IsValidHostname(hostname) == false {
-			msg := fmt.Errorf("%s not valid hostname",  hostname)
+			msg := fmt.Errorf("%s not valid hostname", hostname)
 			return nil, msg
 		}
 
-		records, err :=   dnsGetHostByHostNamev2(hostname)
+		records, err := dnsGetHostByHostNamev2(hostname)
 
 		if err != nil {
 			return nil, err
@@ -86,17 +86,17 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 
 		if len(records) == 0 {
 			msg := fmt.Errorf("%s not found in db.", hostname)
-			return nil ,msg
+			return nil, msg
 		}
 
 		return records, nil
 	}
-	//  api/v2/hosts/{host_ip}  
+	//  api/v2/hosts/{host_ip}
 	if len(segments) == 5 && segments[0] == "api" && segments[1] == "v2" &&
 		segments[2] == "hosts" && segments[3] == "host_ip" {
 		ipaddr := segments[4]
 
-		records, err :=  dnsGetSingleHostByIPv2(ipaddr)
+		records, err := dnsGetSingleHostByIPv2(ipaddr)
 
 		if err != nil {
 			return nil, err
@@ -104,16 +104,13 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 
 		if len(records) == 0 {
 			msg := fmt.Errorf("%s not found in db.", ipaddr)
-			return nil ,msg
+			return nil, msg
 		}
-
 
 		return records, nil
 	}
 
-
 	if len(segments) == 3 && segments[0] == "api" && segments[1] == "v2" && segments[2] == "hosts" {
-
 
 		queryParams := r.URL.Query()
 		page, perPage, err := validatePaginationParams(queryParams)
@@ -123,7 +120,7 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 			return nil, err
 		}
 
-		dnsInfo, err :=  dnsGetMultiHostv2( page, perPage)
+		dnsInfo, err := dnsGetMultiHostv2(page, perPage)
 		if err != nil {
 			return nil, err
 		}
@@ -142,7 +139,6 @@ func hostGet(r *http.Request) (v interface{}, err error) {
 	return nil, msg
 }
 
-
 func dnsGetHostByHostNamev2(hostname string) (dnshost []DNSHostv2, err error) {
 
 	dnsARecord, err := db.GetARecordsByHostNamev2(hostname)
@@ -154,21 +150,19 @@ func dnsGetHostByHostNamev2(hostname string) (dnshost []DNSHostv2, err error) {
 		return nil, msg
 	}
 
-	for _, aRecord := range  dnsARecord {
+	for _, aRecord := range dnsARecord {
 
 		var host DNSHostv2
-		host.ID        =  aRecord.ID
-		host.DomainID  =  aRecord.DomainID
-		host.Hostname  =  aRecord.Name
-		host.IP        =  aRecord.Content
+		host.ID = aRecord.ID
+		host.DomainID = aRecord.DomainID
+		host.Hostname = aRecord.Name
+		host.IP = aRecord.Content
 
 		dnshost = append(dnshost, host)
 	}
 
 	return dnshost, nil
 }
-
-
 
 func dnsGetMultiHostv2(m_page int, m_per_page int) (dnsDBRecord DNSRecordv2, err error) {
 
@@ -192,12 +186,12 @@ func dnsGetMultiHostv2(m_page int, m_per_page int) (dnsDBRecord DNSRecordv2, err
 
 	for _, record := range records {
 		var hostInfo DNSHostv2
-		hostInfo.ID        =  record.ID
-		hostInfo.IP        =  record.Content
-		hostInfo.Hostname  =  record.Name
-		hostInfo.DomainID  =  record.DomainID
+		hostInfo.ID = record.ID
+		hostInfo.IP = record.Content
+		hostInfo.Hostname = record.Name
+		hostInfo.DomainID = record.DomainID
 
-		dnsDBRecord.Hosts  = append(dnsDBRecord.Hosts, hostInfo)
+		dnsDBRecord.Hosts = append(dnsDBRecord.Hosts, hostInfo)
 	}
 
 	dnsDBRecord.Page = m_page
@@ -207,7 +201,6 @@ func dnsGetMultiHostv2(m_page int, m_per_page int) (dnsDBRecord DNSRecordv2, err
 	return dnsDBRecord, nil
 
 }
-
 
 func dnsGetSingleHostByDomainIDv2(domainID int) (dnshosts []DNSHostv2, err error) {
 
@@ -225,14 +218,14 @@ func dnsGetSingleHostByDomainIDv2(domainID int) (dnshosts []DNSHostv2, err error
 
 	if err != nil {
 		g.Logger.Errorf("domain id: %d, error: %s", domainID, err)
-		return nil, fmt.Errorf("Host id %d not found.", domainID )
+		return nil, fmt.Errorf("Host id %d not found.", domainID)
 	}
 
 	for _, aRecord := range dnsARecord {
 		var dnshost DNSHostv2
-		dnshost.ID       = aRecord.ID
+		dnshost.ID = aRecord.ID
 		dnshost.Hostname = aRecord.Name
-		dnshost.IP       = aRecord.Content
+		dnshost.IP = aRecord.Content
 		dnshost.DomainID = aRecord.DomainID
 		dnshosts = append(dnshosts, dnshost)
 	}
@@ -240,7 +233,7 @@ func dnsGetSingleHostByDomainIDv2(domainID int) (dnshosts []DNSHostv2, err error
 	return dnshosts, nil
 }
 
-func dnsGetSingleHostByIDv2(hostID int) (dnshosts DNSHostv2, err error){
+func dnsGetSingleHostByIDv2(hostID int) (dnshosts DNSHostv2, err error) {
 
 	records, err := db.GetARecordsByHostIDv2(hostID)
 
@@ -248,15 +241,15 @@ func dnsGetSingleHostByIDv2(hostID int) (dnshosts DNSHostv2, err error){
 		return dnshosts, err
 	}
 
-	dnshosts.ID           = records.ID
-	dnshosts.DomainID     = records.DomainID
-	dnshosts.Hostname     = records.Name
-	dnshosts.IP           = records.Content
+	dnshosts.ID = records.ID
+	dnshosts.DomainID = records.DomainID
+	dnshosts.Hostname = records.Name
+	dnshosts.IP = records.Content
 
 	return dnshosts, nil
 }
 
-func dnsGetSingleHostByIPv2(ipaddr string) (dnshosts []DNSHostv2, err error){
+func dnsGetSingleHostByIPv2(ipaddr string) (dnshosts []DNSHostv2, err error) {
 
 	records, err := db.GetARecordsByHostIPv2(ipaddr)
 
@@ -266,10 +259,10 @@ func dnsGetSingleHostByIPv2(ipaddr string) (dnshosts []DNSHostv2, err error){
 
 	for _, host := range records {
 		var dnshost DNSHostv2
-		dnshost.ID       = host.ID
+		dnshost.ID = host.ID
 		dnshost.DomainID = host.DomainID
 		dnshost.Hostname = host.Name
-		dnshost.IP       = host.Content
+		dnshost.IP = host.Content
 		dnshosts = append(dnshosts, dnshost)
 	}
 
