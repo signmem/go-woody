@@ -59,7 +59,7 @@ func handleHostsPost(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 	data, err := dnsAdd(r)
 	if err != nil {
-		g.Logger.Errorf("dnsAdd failed: %v", err)
+		g.Logger.Errorf("[v1-add] dnsAdd failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -80,7 +80,7 @@ func handleHostsGet(w http.ResponseWriter, r *http.Request) {
 func handleHostsPut(w http.ResponseWriter, r *http.Request) {
 	data, err := dnsModify(r)
 	if err != nil {
-		g.Logger.Errorf("dnsModify failed: %v", err)
+		g.Logger.Errorf("[v1-modify] dnsModify failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -91,7 +91,7 @@ func handleHostsPut(w http.ResponseWriter, r *http.Request) {
 func handleHostsDelete(w http.ResponseWriter, r *http.Request) {
 	data, err := dnsDelete(r)
 	if err != nil {
-		g.Logger.Errorf("dnsDelete failed: %v", err)
+		g.Logger.Errorf("[v1-delete] dnsDelete failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -147,7 +147,7 @@ func handleHDomainPost(w http.ResponseWriter, r *http.Request) {
 
 	data, err := domainAdd(r)
 	if err != nil {
-		g.Logger.Errorf("domainAdd failed: %v", err)
+		g.Logger.Errorf("[v2-domain-add] domainAdd failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -160,7 +160,7 @@ func handleDomainDelete(w http.ResponseWriter, r *http.Request) {
 
 	data, err := domainDelete(r)
 	if err != nil {
-		g.Logger.Errorf("domainDelete failed: %v", err)
+		g.Logger.Errorf("[v2-domain-delete] domainDelete failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -185,7 +185,7 @@ func handleSOA(w http.ResponseWriter, r *http.Request) {
 func handleSOAPOST(w http.ResponseWriter, r *http.Request) {
 	data, err := domainSOAFlush(r)
 	if err != nil {
-		g.Logger.Errorf("domainSOAFlush failed: %v", err)
+		g.Logger.Errorf("[v2-domain-soa] domainSOAFlush failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -228,7 +228,7 @@ func handleHostnamePost(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 	data, err := hostAdd(r)
 	if err != nil {
-		g.Logger.Errorf("hostAdd failed: %v", err)
+		g.Logger.Errorf("[v2-host-add] hostAdd failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -251,7 +251,7 @@ func handleHostnameGet(w http.ResponseWriter, r *http.Request) {
 func handleHostnameDelete(w http.ResponseWriter, r *http.Request) {
 	data, err := hostDelete(r)
 	if err != nil {
-		g.Logger.Errorf("hostDelete failed: %v", err)
+		g.Logger.Errorf("[v2-host-delete] hostDelete failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -262,7 +262,7 @@ func handleHostnameDelete(w http.ResponseWriter, r *http.Request) {
 func handleHostnamePut(w http.ResponseWriter, r *http.Request) {
 	data, err := hostModify(r)
 	if err != nil {
-		g.Logger.Errorf("hostModify failed: %v", err)
+		g.Logger.Errorf("[v2-host-modify] hostModify failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -289,7 +289,7 @@ func handleDomainMetaPost(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8*1024*1024)
 	data, err := syncSlaveDomain(r)
 	if err != nil {
-		g.Logger.Errorf("handleDomainMetaPost() failed: %v", err)
+		g.Logger.Errorf("[v2-domain-add] handleDomainMetaPost() failed: %v", err)
 		RenderFailJson(w, http.StatusBadRequest, err.Error())
 		return
 	}

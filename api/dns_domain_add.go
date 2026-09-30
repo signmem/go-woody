@@ -64,7 +64,7 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	addedDomains := make([]string, 0)
 
 	if g.Config().Debug {
-		g.Logger.Debugf("domainAdd() add %s", DomainList.String())
+		g.Logger.Debugf("[v2-domain-add] domainAdd() add %s", DomainList.DomainString())
 	}
 
 	tx, err := db.DB.Begin()
@@ -177,6 +177,8 @@ func domainAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	addStatus.Failure = falseAdd
 
 	htmlMsg.Msg = addStatus.String()
+
+	g.Logger.Debugf("[v2-domain-add] domainAdd() add %s success", DomainList.DomainString())
 
 	// DB 已提交, 同步 named zone; 失败时返回明确的"部分成功"信息
 	if zoneErr := appendZoneForwards(addedDomains); zoneErr != nil {

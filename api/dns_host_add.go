@@ -153,6 +153,8 @@ func addDomainHost(host HostParams) (err error) {
 	hostName := strings.TrimSpace(host.Hostname)
 	ipaddr := strings.TrimSpace(host.IP)
 
+	g.Logger.Debugf("[v2-host-add] add host:%s  ip:%s", hostName, ipaddr)
+
 	if db.DB == nil {
 		g.Logger.Error("Database connection is nil - check if initDB() was called")
 		return fmt.Errorf("database connection is not initialized")
@@ -204,6 +206,8 @@ func addDomainHost(host HostParams) (err error) {
 		return fmt.Errorf("addDomainHost() db commit error: %w", err)
 	}
 	rollbackNeeded = false
+
+	g.Logger.Debugf("[v2-host-add] add host:%s  ip:%s success", hostName, ipaddr)
 
 	return nil
 }

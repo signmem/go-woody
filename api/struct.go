@@ -28,6 +28,11 @@ type DomainCreate struct {
 	Master string `json:"master,omitempty"`
 }
 
+func (this *DomainCreate) DomainString() string {
+        return fmt.Sprintf("domain: %v", strings.Join(this.Domains, " "))
+}
+
+
 type HostParams struct {
 	Hostname string `json:"hostname"`
 	IP       string `json:"ip"`

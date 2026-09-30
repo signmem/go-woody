@@ -108,7 +108,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	}
 
 	if count != 1 {
-		msg := fmt.Errorf("dnsModify() Error: id: %d, hostname: %s, not found in DB",
+		msg := fmt.Errorf("[v1-modify] dnsModify() Error: id: %d, hostname: %s, not found in DB",
 			domainID, hostDict.Hostname)
 		g.Logger.Error(msg)
 		return record, msg
@@ -145,7 +145,7 @@ func dnsModify(r *http.Request) (record DNSHost, err error) {
 	}
 	rollbackNeeded = false
 
-	g.Logger.Infof("dnsModify() update id: %d hostname: %s ipaddr: %s success",
+	g.Logger.Infof("[v1-modify] dnsModify() update id: %d hostname: %s ipaddr: %s success",
 		dnsModify.DomainID, dnsModify.Name, dnsModify.Content)
 
 	dnsARecord, err := db.GetARecordsByDomainID(domainID)

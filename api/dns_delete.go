@@ -75,7 +75,7 @@ func dnsDelete(r *http.Request) (record DNSHost, err error) {
 	record.Hostname = aRecord.Name
 	record.ID = aRecord.DomainID
 
-	g.Logger.Infof("dnsDelete() delete hostname %s success", aRecord.Name)
+	g.Logger.Infof("[v1-delete] dnsDelete() delete hostname %s success", aRecord.Name)
 
 	// 修复: DB 已提交, zone 移除走互斥 + rndc reconfig;
 	// zone 条目不存在只记 warning, 不影响删除结果

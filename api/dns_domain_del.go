@@ -28,6 +28,8 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 
 	domainName := pathParts[0]
 
+	g.Logger.Debugf("[v2-domain-delete] domainDelete() delete domain: %s", domainName)
+
 	domainDetail, err := db.GetDomainsByName(domainName)
 
 	if err != nil || domainDetail == nil || domainDetail.ID == 0 {
@@ -81,7 +83,7 @@ func domainDelete(r *http.Request) (domaininfo DomainInfo, err error) {
 	}
 	rollbackNeeded = false
 
-	g.Logger.Infof("domainDelete() delete domain %s success", domaininfo.DomainName)
+	g.Logger.Infof("[v2-domain-delete] domainDelete() delete domain %s success", domaininfo.DomainName)
 
 	// DB 已提交, 同步移除 named zone 条目 (互斥 + rndc reconfig);
 	// 条目不存在只记 warning, 不影响删除结果
