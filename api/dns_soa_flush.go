@@ -6,15 +6,12 @@ import (
 	"github.com/signmem/go-woody/db"
 	"github.com/signmem/go-woody/g"
 	"io"
-	"mime"
 	"net/http"
 )
 
 func domainSOAFlush(r *http.Request) (v interface{}, err error) {
 
-	headerContentType := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(headerContentType)
-	if err != nil || mediaType != "application/json" {
+	if !isContentTypeJson(r) {
 		msg := fmt.Errorf("domainSOAFlush() Error: body not json format")
 		g.Logger.Error(msg)
 		return nil, msg
