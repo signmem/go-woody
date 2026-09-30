@@ -78,7 +78,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 	addedHosts := make([]string, 0, len(hostDict.Hosts))
 
 	if g.Config().Debug {
-		g.Logger.Debugf("dnsAdd() add %s", hostDict.String())
+		g.Logger.Debugf("[v1-add] dnsAdd() add %s", hostDict.String())
 	}
 
 	for _, host := range hostDict.Hosts {
@@ -122,16 +122,16 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		}
 
 		if ipExists {
-			g.Logger.Errorf("dnsAdd() Error: %s records exists", hostName)
+			g.Logger.Errorf("[v1-add] dnsAdd() Error: %s records exists", hostName)
 			falseAdd += 1
 			continue
 		}
 
 		if err := addSingleHost(host); err != nil {
 			if errors.Is(err, errRecordExists) || isMySQLDuplicate(err) {
-				g.Logger.Errorf("dnsAdd() Error: %s records exists (concurrent insert)", hostName)
+				g.Logger.Errorf("[v1-add] dnsAdd() Error: %s records exists (concurrent insert)", hostName)
 			} else {
-				g.Logger.Errorf("dnsAdd() add host %s error: %s", hostName, err)
+				g.Logger.Errorf("[v1-add] dnsAdd() add host %s error: %s", hostName, err)
 			}
 			falseAdd += 1
 			continue
@@ -141,7 +141,7 @@ func dnsAdd(r *http.Request) (htmlMsg ReturnMsg, err error) {
 		addedHosts = append(addedHosts, hostName)
 
 		if g.Config().Debug {
-			g.Logger.Debugf("dnsAdd() Debug: add hostname %v", hostName)
+			g.Logger.Debugf("[v1-add] dnsAdd() Debug: add hostname %v", hostName)
 		}
 	}
 
