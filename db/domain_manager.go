@@ -546,3 +546,43 @@ func GetAllPDNSDomain(domainType string) (records []*Domain, err error) {
 	return records, nil
 
 }
+
+// GetAllDomains 返回 pdns.domains 表中的全部域名 (不区分 type)。
+// 与 GetAllPDNSDomain 的区别: 后者空参数时反而排除 NATIVE (历史语义),
+// zoneflush 全量对账场景需要真正的 "所有行"。
+func GetAllDomains() (records []*Domain, err error) {
+
+	query := "SELECT id, name, master, type FROM domains"
+	rows, err := DB.Query(query)
+	if err != nil {
+		g.Logger.Errorf("GetAllDomains() query error: %s", err)
+		return records, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+
+		var record Domain
+		err = rows.Scan(
+			&record.ID,
+			&record.Name,
+			&record.Master,
+			&record.Type,
+		)
+
+		if err != nil {
+			g.Logger.Errorf("GetAllDomains() scan error: %s", err)
+			return records, err
+		}
+
+		records = append(records, &record)
+	}
+
+	if err = rows.Err(); err != nil {
+		g.Logger.Errorf("GetAllDomains() rows iteration error: %s", err)
+		return records, err
+	}
+
+	return records, nil
+
+}

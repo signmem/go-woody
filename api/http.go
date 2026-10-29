@@ -161,4 +161,6 @@ func registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v2/slave/", handleSlaveDomain)
 	mux.HandleFunc("/api/v2/soa", handleSOA)
 	mux.HandleFunc("/api/v2/soa/", handleSOA)
+	mux.HandleFunc("/api/v2/zoneflush", handleZone)
+	mux.HandleFunc("/api/v2/zoneflush/", handleZone)
 }

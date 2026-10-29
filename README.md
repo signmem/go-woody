@@ -69,5 +69,20 @@
 | NOTIFY | 查询 | GET | curl -X GET  http://localhost/api/v2/slave/ |
 
 
+# release log 
+##  1.1.3
+### 说明 
+* 增加 /api/v2/zoneflush/ 接口  
+* 主要用于主动读 pdns.domains 所有域名并写入 /etc/named/zone.conf 文件中  
+* 支持 dry-run 功能 (GET) 写入方法 (POST) 
+* 参考下面测试语法
+
+```
+curl -s -H "X-Auth-Token: 12332111" http://127.0.0.1/api/v2/zoneflush/ | python -m json.tool
+curl -s -X POST -H "X-Auth-Token: 12332111" http://127.0.0.1/api/v2/zoneflush/ | python -m json.tool
+```
+
+
+
 
 

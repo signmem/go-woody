@@ -306,3 +306,16 @@ func handleDomainMetaGet(w http.ResponseWriter, r *http.Request) {
 	}
 	RenderJson(w, dnsInfo)
 }
+
+
+func handleZone(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		handleZoneFlushPreview(w, r)
+	case http.MethodPost:
+		handleZoneFlushPost(w, r)
+	default:
+		RenderFailJson(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
